@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SNAKE — LAS VEGAS</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bungee&family=Share+Tech+Mono&display=swap');
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: #0a0010;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Share Tech Mono', 'Courier New', monospace;
+    overflow: hidden;
+  }
+
+  /* Animated starfield BG */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 20% 50%, rgba(255,0,200,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(0,200,255,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse at 60% 80%, rgba(255,180,0,0.06) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* CRT scanlines */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 3px,
+      rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 4px
+    );
+    pointer-events: none;
+    z-index: 200;
+  }
+
+  #app {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 20px;
+  }
+
+  /* ── MARQUEE TITLE ── */
+  #title-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  #title {
+    font-family: 'Bungee', 'Arial Black', sans-serif;
+    font-size: 52px;
+    letter-spacing: 8px;
+    line-height: 1;
+    user-select: none;
+    position: relative;
+  }
+
+  .t-s { color: #ff00cc; text-shadow: 0 0 10px #ff00cc, 0 0 30px #ff00cc, 0 0 60px #ff00cc88; }
+  .t-n { color: #ffffff; text-shadow: 0 0 10px #fff, 0 0 25px #fff; animation: flicker1 4s infinite; }
+  .t-a { color: #ffe600; text-shadow: 0 0 10px #ffe600, 0 0 30px #ffe600, 0 0 60px #ffe60088; }
+  .t-k { color: #00ffe7; text-shadow: 0 0 10px #00ffe7, 0 0 30px #00ffe7, 0 0 60px #00ffe788; animation: flicker2 6s infinite; }
+  .t-e { color: #ff4400; text-shadow: 0 0 10px #ff4400, 0 0 30px #ff4400, 0 0 60px #ff440088; }
+
+  @keyframes flicker1 {
+    0%,96%,100% { opacity:1; }
+    97% { opacity:0.2; }
+    98% { opacity:1; }
+    99% { opacity:0.4; }
+  }
+  @keyframes flicker2 {
+    0%,88%,92%,100% { opacity:1; }
+    89% { opacity:0.1; }
+    90% { opacity:1; }
+    91% { opacity:0.3; }
+  }
+
+  /* Bulb dots around title */
+  .bulbs {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .bulb {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    animation: bulb-chase 1.2s linear infinite;
+  }
+  .bulb:nth-child(1)  { background:#ff00cc; box-shadow:0 0 6px #ff00cc; animation-delay: 0s; }
+  .bulb:nth-child(2)  { background:#ffe600; box-shadow:0 0 6px #ffe600; animation-delay:.15s; }
+  .bulb:nth-child(3)  { background:#00ffe7; box-shadow:0 0 6px #00ffe7; animation-delay:.3s; }
+  .bulb:nth-child(4)  { background:#ff4400; box-shadow:0 0 6px #ff4400; animation-delay:.45s; }
+  .bulb:nth-child(5)  { background:#ff00cc; box-shadow:0 0 6px #ff00cc; animation-delay:.6s; }
+  @keyframes bulb-chase {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%     { opacity:0.15; transform:scale(0.7); }
+  }
+
+  /* ── HUD ── */
+  #hud {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+  }
+
+  .hud-box {
+    text-align: center;
+    min-width: 72px;
+    padding: 6px 12px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    background: rgba(0,0,0,0.4);
+    position: relative;
+  }
+  .hud-box::before {
+    content: '';
+    position: absolute; inset: -1px;
+    border-radius: 4px;
+    background: linear-gradient(135deg, rgba(255,0,204,0.3), rgba(0,255,231,0.3));
+    z-index: -1;
+    filter: blur(4px);
+  }
+
+  .hud-label { font-size: 9px; letter-spacing: 4px; color: #556677; margin-bottom: 2px; }
+  .hud-val   { font-size: 26px; font-weight: 700; letter-spacing: 2px; line-height: 1.1; }
+  #score-val { color: #ff00cc; text-shadow: 0 0 12px #ff00cc; }
+  #best-val  { color: #ffe600; text-shadow: 0 0 12px #ffe600; }
+
+  /* Speed pips */
+  #speed-pips { display:flex; gap:3px; justify-content:center; margin-top:3px; }
+  .pip {
+    width: 7px; height: 12px; border-radius: 2px;
+    background: #1a0a20;
+    transition: background 0.1s, box-shadow 0.1s;
+  }
+  .pip.on-1 { background:#00ffe7; box-shadow:0 0 5px #00ffe7; }
+  .pip.on-2 { background:#ffe600; box-shadow:0 0 5px #ffe600; }
+  .pip.on-3 { background:#ff4400; box-shadow:0 0 5px #ff4400; }
+
+  /* ── CANVAS ── */
+  #canvas-wrap {
+    position: relative;
+    display: inline-block;
+    cursor: crosshair;
+  }
+
+  /* Neon border frame */
+  #canvas-wrap::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #ff00cc, #ffe600, #00ffe7, #ff4400, #ff00cc);
+    background-size: 300% 100%;
+    animation: border-run 3s linear infinite;
+    z-index: -1;
+    filter: blur(2px);
+  }
+  #canvas-wrap::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 8px;
+    background: linear-gradient(90deg, #ff00cc, #ffe600, #00ffe7, #ff4400, #ff00cc);
+    background-size: 300% 100%;
+    animation: border-run 3s linear infinite;
+    z-index: -2;
+    filter: blur(8px);
+    opacity: 0.5;
+  }
+  @keyframes border-run {
+    0%   { background-position: 0% 50%; }
+    100% { background-position: 300% 50%; }
+  }
+
+  canvas { display:block; border-radius:3px; }
+
+  /* ── OVERLAY ── */
+  #overlay {
+    position: absolute; inset: 0;
+    background: rgba(10,0,16,0.88);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 10px; border-radius: 3px;
+    backdrop-filter: blur(4px);
+    cursor: pointer;
+  }
+  #overlay.hidden { display: none; }
+
+  .ov-icon {
+    font-size: 50px; line-height: 1;
+    animation: pulse-icon 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse-icon {
+    0%,100% { transform: scale(1); filter: brightness(1); }
+    50%     { transform: scale(1.15); filter: brightness(1.4); }
+  }
+
+  .ov-title {
+    font-family: 'Bungee', 'Arial Black', sans-serif;
+    font-size: 22px; letter-spacing: 8px;
+  }
+  .ov-hint  { font-size: 11px; letter-spacing: 3px; color: #445566; margin-top: 2px; }
+  #ov-score { font-size: 16px; letter-spacing: 4px; color: #aabbcc; display: none; }
+
+  /* start state */
+  .ov-start .ov-icon  { color: #00ffe7; text-shadow: 0 0 20px #00ffe7; }
+  .ov-start .ov-title { color: #00ffe7; text-shadow: 0 0 18px #00ffe7, 0 0 40px #00ffe7; }
+
+  /* dead state */
+  .ov-dead .ov-icon  { color: #ff4400; text-shadow: 0 0 20px #ff4400; animation: none; }
+  .ov-dead .ov-title { color: #ff4400; text-shadow: 0 0 18px #ff4400, 0 0 40px #ff4400; }
+
+  #hint { font-size: 10px; letter-spacing: 3px; color: #1e1030; margin-top: -4px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="title-wrap">
+    <div class="bulbs">
+      <div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div>
+    </div>
+    &nbsp;
+    <div id="title">
+      <span class="t-s">S</span><span class="t-n">N</span><span class="t-a">A</span><span class="t-k">K</span><span class="t-e">E</span>
+    </div>
+    &nbsp;
+    <div class="bulbs">
+      <div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div>
+    </div>
+  </div>
+
+  <div id="hud">
+    <div class="hud-box"><div class="hud-label">SCORE</div><div class="hud-val" id="score-val">0</div></div>
+    <div class="hud-box"><div class="hud-label">SPEED</div><div id="speed-pips"></div></div>
+    <div class="hud-box"><div class="hud-label">BEST</div><div class="hud-val" id="best-val">0</div></div>
+  </div>
+
+  <div id="canvas-wrap">
+    <canvas id="c"></canvas>
+    <div id="overlay" class="ov-start">
+      <div class="ov-icon">▶</div>
+      <div class="ov-title">INSERT COIN</div>
+      <div id="ov-score"></div>
+      <div class="ov-hint">tap · drag · swipe to play</div>
+    </div>
+  </div>
+
+  <div id="hint">← swipe or drag on canvas to steer →</div>
+</div>
+
+<script>
+(function () {
+  // ── Constants ──────────────────────────────────────────────
+  const COLS = 20, ROWS = 20;
+  // Fit a strict 20×20 grid: each cell = 20px → canvas = 400×400
+  const CELL = 20;
+  const W = COLS * CELL, H = ROWS * CELL;   // exactly 400 × 400
+
+  const BASE_SPEED = 160, SPEED_STEP = 8, MIN_SPEED = 55;
+  const PIP_COUNT  = 12;
+
+  // Neon palette
+  const C = {
+    bg:       '#0a0010',
+    grid:     'rgba(255,255,255,0.03)',
+    gridLine: 'rgba(255,0,200,0.06)',
+    head:     '#ff00cc',
+    headGlow: '#ff00cc',
+    body1:    '#cc00aa',
+    body2:    '#6600aa',
+    food:     '#ffe600',
+    foodGlow: '#ffe600',
+    border:   '#ff00cc',
+    eyeBg:    '#0a0010',
+  };
+
+  // ── DOM ────────────────────────────────────────────────────
+  const canvas  = document.getElementById('c');
+  const ctx     = canvas.getContext('2d');
+  canvas.width  = W;
+  canvas.height = H;
+
+  const scoreEl = document.getElementById('score-val');
+  const bestEl  = document.getElementById('best-val');
+  const pipsEl  = document.getElementById('speed-pips');
+  const overlay = document.getElementById('overlay');
+  const ovIcon  = document.querySelector('.ov-icon');
+  const ovTitle = document.querySelector('.ov-title');
+  const ovScore = document.getElementById('ov-score');
+
+  const pips = Array.from({length: PIP_COUNT}, () => {
+    const p = document.createElement('div');
+    p.className = 'pip';
+    pipsEl.appendChild(p);
+    return p;
+  });
+
+  // ── State ──────────────────────────────────────────────────
+  let snake   = [{x:10,y:10}];
+  let dir     = {x:1,y:0};
+  let nextDir = {x:1,y:0};
+  let food    = {x:5,y:5};
+  let score   = 0, best = 0, speed = BASE_SPEED;
+  let running = false, loopId = null;
+
+  // ── Helpers ────────────────────────────────────────────────
+  function randomFood() {
+    let f;
+    do { f = {x:Math.floor(Math.random()*COLS), y:Math.floor(Math.random()*ROWS)}; }
+    while (snake.some(s => s.x===f.x && s.y===f.y));
+    return f;
+  }
+
+  function setScore(v) { score=v; scoreEl.textContent=v; }
+
+  function updatePips() {
+    const level = Math.min(PIP_COUNT, Math.floor((BASE_SPEED-speed)/SPEED_STEP)+1);
+    pips.forEach((p,i) => {
+      p.className = 'pip' + (i>=level ? '' : i<4 ? ' on-1' : i<8 ? ' on-2' : ' on-3');
+    });
+  }
+
+  function lerpHex(a, b, t) {
+    const h=s=>parseInt(s,16);
+    const ah=a.slice(1), bh=b.slice(1);
+    const r=Math.round(h(ah.slice(0,2))+(h(bh.slice(0,2))-h(ah.slice(0,2)))*t).toString(16).padStart(2,'0');
+    const g=Math.round(h(ah.slice(2,4))+(h(bh.slice(2,4))-h(ah.slice(2,4)))*t).toString(16).padStart(2,'0');
+    const b2=Math.round(h(ah.slice(4,6))+(h(bh.slice(4,6))-h(ah.slice(4,6)))*t).toString(16).padStart(2,'0');
+    return '#'+r+g+b2;
+  }
+
+  function rRect(x,y,w,h,r) {
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+    ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+    ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+    ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
+    ctx.closePath();
+  }
+
+  // ── Draw ───────────────────────────────────────────────────
+  function draw() {
+    // BG
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(0,0,W,H);
+
+    // Grid — strict 20×20 lines
+    ctx.strokeStyle = C.gridLine;
+    ctx.lineWidth   = 0.5;
+    for (let x=0; x<=COLS; x++) {
+      ctx.beginPath(); ctx.moveTo(x*CELL,0); ctx.lineTo(x*CELL,H); ctx.stroke();
+    }
+    for (let y=0; y<=ROWS; y++) {
+      ctx.beginPath(); ctx.moveTo(0,y*CELL); ctx.lineTo(W,y*CELL); ctx.stroke();
+    }
+
+    // Corner marks to reinforce the grid
+    ctx.fillStyle = 'rgba(255,0,200,0.18)';
+    for (let x=0; x<COLS; x++) for (let y=0; y<ROWS; y++) {
+      ctx.fillRect(x*CELL, y*CELL, 2, 2);
+    }
+
+    // Food glow
+    const fx=food.x*CELL+CELL/2, fy=food.y*CELL+CELL/2;
+    const grd=ctx.createRadialGradient(fx,fy,0,fx,fy,CELL*1.8);
+    grd.addColorStop(0,'rgba(255,230,0,0.6)');
+    grd.addColorStop(0.5,'rgba(255,180,0,0.2)');
+    grd.addColorStop(1,'rgba(255,180,0,0)');
+    ctx.fillStyle=grd;
+    ctx.fillRect(fx-CELL*2,fy-CELL*2,CELL*4,CELL*4);
+
+    // Food — diamond shape for Vegas flair
+    ctx.save();
+    ctx.shadowColor=C.foodGlow; ctx.shadowBlur=20;
+    ctx.fillStyle=C.food;
+    ctx.translate(fx,fy);
+    ctx.rotate(Math.PI/4);
+    const ds=CELL*0.38;
+    ctx.fillRect(-ds,-ds,ds*2,ds*2);
+    ctx.restore();
+
+    // Food inner shine
+    ctx.save();
+    ctx.fillStyle='rgba(255,255,255,0.7)';
+    ctx.translate(fx,fy);
+    ctx.rotate(Math.PI/4);
+    ctx.fillRect(-ds*0.35,-ds*0.35,ds*0.7,ds*0.7);
+    ctx.restore();
+
+    // Snake
+    const len=snake.length;
+    snake.forEach((seg,i) => {
+      const t=i/(len-1||1);
+      const sx=seg.x*CELL+1, sy=seg.y*CELL+1, sz=CELL-2;
+      ctx.save();
+      if (i===0) {
+        ctx.shadowColor=C.headGlow; ctx.shadowBlur=25;
+        ctx.fillStyle=C.head;
+      } else {
+        // body fades pink→purple
+        ctx.fillStyle = lerpHex(C.body1, C.body2, Math.min(t*1.5, 1));
+        if (i<3) { ctx.shadowColor=C.head; ctx.shadowBlur=10; }
+      }
+      rRect(sx,sy,sz,sz,4);
+      ctx.fill();
+
+      // Segment border glow
+      if (i<5) {
+        ctx.strokeStyle = i===0 ? 'rgba(255,180,255,0.6)' : 'rgba(200,0,200,0.3)';
+        ctx.lineWidth = 0.8;
+        rRect(sx,sy,sz,sz,4);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Head eyes
+      if (i===0) {
+        ctx.fillStyle=C.eyeBg;
+        const ex=seg.x*CELL+CELL/2+dir.x*4, ey=seg.y*CELL+CELL/2+dir.y*4;
+        const ox=dir.y*3.5, oy=dir.x*3.5;
+        ctx.beginPath(); ctx.arc(ex+ox,ey-oy,2,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(ex-ox,ey+oy,2,0,Math.PI*2); ctx.fill();
+        // pupils gleam
+        ctx.fillStyle='rgba(255,255,255,0.8)';
+        ctx.beginPath(); ctx.arc(ex+ox+0.5,ey-oy-0.5,0.7,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(ex-ox+0.5,ey+oy-0.5,0.7,0,Math.PI*2); ctx.fill();
+      }
+    });
+
+    // Outer neon border
+    ctx.save();
+    ctx.strokeStyle='#ff00cc'; ctx.lineWidth=2;
+    ctx.shadowColor='#ff00cc'; ctx.shadowBlur=20;
+    ctx.strokeRect(1,1,W-2,H-2);
+    ctx.restore();
+  }
+
+  // ── Tick ───────────────────────────────────────────────────
+  function tick() {
+    dir = nextDir;
+    const head = {x:snake[0].x+dir.x, y:snake[0].y+dir.y};
+
+    if (head.x<0||head.x>=COLS||head.y<0||head.y>=ROWS||snake.some(s=>s.x===head.x&&s.y===head.y)) {
+      clearInterval(loopId); loopId=null; running=false;
+      if (score>best) { best=score; bestEl.textContent=best; }
+      overlay.className='ov-dead';
+      ovIcon.textContent='💀';
+      ovTitle.textContent='GAME OVER';
+      ovScore.textContent='Score: '+score; ovScore.style.display='block';
+      overlay.classList.remove('hidden'); // ensure visible
+      return;
+    }
+
+    snake.unshift(head);
+    if (head.x===food.x && head.y===food.y) {
+      setScore(score+1);
+      food=randomFood();
+      speed=Math.max(MIN_SPEED,speed-SPEED_STEP);
+      updatePips();
+      clearInterval(loopId);
+      loopId=setInterval(tick,speed);
+    } else {
+      snake.pop();
+    }
+    draw();
+  }
+
+  // ── Start ──────────────────────────────────────────────────
+  function startGame() {
+    if (loopId) { clearInterval(loopId); loopId=null; }
+    snake   = [{x:10,y:10}];
+    dir     = {x:1,y:0};
+    nextDir = {x:1,y:0};
+    food    = randomFood();
+    speed   = BASE_SPEED;
+    running = true;
+    setScore(0);
+    updatePips();
+    overlay.className = 'ov-start hidden';
+    ovScore.style.display='none';
+    draw();
+    loopId=setInterval(tick,speed);
+  }
+
+  // ── Direction ──────────────────────────────────────────────
+  function applyDir(dx,dy) {
+    let d;
+    if (Math.abs(dx)>Math.abs(dy)) d = dx>0?{x:1,y:0}:{x:-1,y:0};
+    else                           d = dy>0?{x:0,y:1}:{x:0,y:-1};
+    if (d.x !== -dir.x || d.y !== -dir.y) nextDir=d;
+  }
+
+  // ── Input ──────────────────────────────────────────────────
+  overlay.addEventListener('click', () => { if(!running) startGame(); });
+
+  const KEY_MAP={ArrowUp:{x:0,y:-1},ArrowDown:{x:0,y:1},ArrowLeft:{x:-1,y:0},ArrowRight:{x:1,y:0}};
+  document.addEventListener('keydown', e => {
+    if (!KEY_MAP[e.key]) return;
+    e.preventDefault();
+    if (!running) { startGame(); return; }
+    applyDir(KEY_MAP[e.key].x*10, KEY_MAP[e.key].y*10);
+  });
+
+  let dragX,dragY,dragging=false;
+  canvas.addEventListener('mousedown', e => { dragX=e.clientX; dragY=e.clientY; dragging=true; });
+  document.addEventListener('mouseup', e => {
+    if (!dragging) return; dragging=false;
+    const dx=e.clientX-dragX, dy=e.clientY-dragY;
+    if (Math.abs(dx)<6&&Math.abs(dy)<6) { if(!running) startGame(); return; }
+    if (!running) { startGame(); return; }
+    applyDir(dx,dy);
+  });
+
+  let tX,tY;
+  canvas.addEventListener('touchstart', e => { tX=e.touches[0].clientX; tY=e.touches[0].clientY; e.preventDefault(); },{passive:false});
+  canvas.addEventListener('touchend', e => {
+    const dx=e.changedTouches[0].clientX-tX, dy=e.changedTouches[0].clientY-tY;
+    if (Math.abs(dx)<10&&Math.abs(dy)<10) { if(!running) startGame(); return; }
+    if (!running) { startGame(); return; }
+    applyDir(dx,dy);
+    e.preventDefault();
+  },{passive:false});
+
+  draw();
+})();
+</script>
+</body>
+</html>
