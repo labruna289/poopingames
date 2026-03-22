@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POOPI GAMES — ARCADE</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: #0a0010; min-height:100vh;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-family:'Courier New',monospace; overflow:hidden;
+  }
+  body::before {
+    content:''; position:fixed; inset:0;
+    background:
+      radial-gradient(ellipse at 20% 50%,rgba(255,0,200,0.08) 0%,transparent 60%),
+      radial-gradient(ellipse at 80% 20%,rgba(0,200,255,0.08) 0%,transparent 60%),
+      radial-gradient(ellipse at 60% 80%,rgba(255,180,0,0.06) 0%,transparent 60%);
+    pointer-events:none; z-index:0;
+  }
+
+  .container {
+    position:relative; z-index:1;
+    display:flex; flex-direction:column; align-items:center; gap:48px;
+  }
+
+  h1 {
+    font-size:clamp(2.5rem,8vw,5rem);
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    color:#fff;
+    text-shadow:
+      0 0 10px #ff00cc,
+      0 0 30px #ff00cc,
+      0 0 60px #ff00cc,
+      0 0 100px #ff00cc;
+    animation: flicker 4s infinite;
+  }
+
+  .subtitle {
+    font-size:1rem;
+    letter-spacing:0.4em;
+    color:#00ccff;
+    text-transform:uppercase;
+    text-shadow: 0 0 8px #00ccff, 0 0 20px #00ccff;
+    margin-top:-36px;
+  }
+
+  .games-grid {
+    display:flex;
+    flex-wrap:wrap;
+    gap:24px;
+    justify-content:center;
+    padding:0 24px;
+  }
+
+  .game-card {
+    position:relative;
+    width:220px;
+    border:2px solid #ff00cc;
+    padding:28px 20px;
+    text-align:center;
+    text-decoration:none;
+    color:#fff;
+    background:rgba(255,0,200,0.05);
+    transition:all 0.2s;
+    box-shadow: 0 0 12px #ff00cc44, inset 0 0 12px #ff00cc11;
+  }
+  .game-card:hover {
+    background:rgba(255,0,200,0.15);
+    box-shadow: 0 0 30px #ff00cc88, inset 0 0 20px #ff00cc22;
+    transform:scale(1.05);
+  }
+  .game-card::before {
+    content:''; position:absolute; inset:-1px;
+    background:linear-gradient(135deg,#ff00cc44,transparent 60%,#00ccff44);
+    pointer-events:none;
+  }
+
+  .game-icon {
+    font-size:2.8rem;
+    margin-bottom:14px;
+    display:block;
+    filter:drop-shadow(0 0 8px #ff00cc);
+  }
+
+  .game-name {
+    font-size:1.1rem;
+    letter-spacing:0.15em;
+    text-transform:uppercase;
+    color:#fff;
+    text-shadow: 0 0 8px #ff00cc;
+  }
+
+  .game-tag {
+    margin-top:8px;
+    font-size:0.65rem;
+    letter-spacing:0.25em;
+    color:#00ccff;
+    text-shadow: 0 0 6px #00ccff;
+  }
+
+  .scanlines {
+    position:fixed; inset:0; pointer-events:none; z-index:2;
+    background:repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.06) 2px,
+      rgba(0,0,0,0.06) 4px
+    );
+  }
+
+  @keyframes flicker {
+    0%,95%,100% { opacity:1; }
+    96% { opacity:0.7; }
+    97% { opacity:1; }
+    98% { opacity:0.5; }
+    99% { opacity:1; }
+  }
+</style>
+</head>
+<body>
+<div class="scanlines"></div>
+<div class="container">
+  <div>
+    <h1>Poopi Games</h1>
+    <p class="subtitle">Select Your Game</p>
+  </div>
+
+  <div class="games-grid">
+    <a class="game-card" href="arkanoid.html">
+      <span class="game-icon">🧱</span>
+      <div class="game-name">Arkanoid</div>
+      <div class="game-tag">Las Vegas Edition</div>
+    </a>
+  </div>
+</div>
+</body>
+</html>
