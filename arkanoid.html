@@ -3,122 +3,240 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ARKANOID — LAS VEGAS</title>
+<title>Arkanoid — Poopi Games</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+  :root {
+    --bg: #fbfbfd;
+    --text-primary: #1d1d1f;
+    --text-secondary: #6e6e73;
+    --text-tertiary: #a1a1a6;
+    --card-bg: #fff;
+    --card-border: rgba(0,0,0,0.08);
+    --nav-bg: rgba(251,251,253,0.8);
+    --blue: #0071e3;
+    --stat-bg: rgba(0,0,0,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000;
+      --text-primary: #f5f5f7;
+      --text-secondary: #a1a1a6;
+      --text-tertiary: #6e6e73;
+      --card-bg: #1c1c1e;
+      --card-border: rgba(255,255,255,0.08);
+      --nav-bg: rgba(0,0,0,0.72);
+      --stat-bg: rgba(255,255,255,0.06);
+    }
+  }
+
   body {
-    background: #0a0010; min-height:100vh;
-    display:flex; align-items:center; justify-content:center;
-    font-family:'Courier New',monospace; overflow:hidden;
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
-  body::before {
-    content:''; position:fixed; inset:0;
-    background:
-      radial-gradient(ellipse at 20% 50%,rgba(255,0,200,0.08) 0%,transparent 60%),
-      radial-gradient(ellipse at 80% 20%,rgba(0,200,255,0.08) 0%,transparent 60%),
-      radial-gradient(ellipse at 60% 80%,rgba(255,180,0,0.06) 0%,transparent 60%);
-    pointer-events:none; z-index:0;
+
+  /* ── Nav ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: 48px;
+    background: var(--nav-bg);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--card-border);
+    display: flex; align-items: center; justify-content: center;
   }
-  body::after {
-    content:''; position:fixed; inset:0;
-    background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.12) 3px,rgba(0,0,0,0.12) 4px);
-    pointer-events:none; z-index:200;
+  .nav-inner {
+    width: 100%; max-width: 600px;
+    padding: 0 22px;
+    display: flex; align-items: center; justify-content: space-between;
   }
-  #app { position:relative; z-index:10; display:flex; flex-direction:column; align-items:center; gap:12px; padding:20px; }
+  .nav-back {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 0.85rem; color: var(--blue);
+    text-decoration: none;
+    transition: opacity 0.2s;
+  }
+  .nav-back:hover { opacity: 0.75; }
+  .nav-back svg { width: 16px; height: 16px; }
+  .nav-title {
+    font-size: 0.9rem; font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+  .nav-spacer { width: 60px; }
 
-  #title-wrap { display:flex; align-items:center; gap:0; }
-  #title { font-family:'Arial Black',sans-serif; font-size:42px; font-weight:900; letter-spacing:6px; line-height:1; user-select:none; }
-  .t-a1{ color:#ff00cc; text-shadow:0 0 10px #ff00cc,0 0 30px #ff00cc,0 0 60px #ff00cc88; }
-  .t-r { color:#ffffff; text-shadow:0 0 10px #fff,0 0 25px #fff; animation:flicker1 4s infinite; }
-  .t-k { color:#ffe600; text-shadow:0 0 10px #ffe600,0 0 30px #ffe600,0 0 60px #ffe60088; }
-  .t-a2{ color:#00ffe7; text-shadow:0 0 10px #00ffe7,0 0 30px #00ffe7,0 0 60px #00ffe788; animation:flicker2 6s infinite; }
-  .t-n { color:#ff4400; text-shadow:0 0 10px #ff4400,0 0 30px #ff4400,0 0 60px #ff440088; }
-  .t-o { color:#ff00cc; text-shadow:0 0 10px #ff00cc,0 0 30px #ff00cc; }
-  .t-i { color:#ffe600; text-shadow:0 0 10px #ffe600,0 0 30px #ffe600; animation:flicker1 7s infinite; }
-  .t-d { color:#00ffe7; text-shadow:0 0 10px #00ffe7,0 0 30px #00ffe7; }
-  @keyframes flicker1{0%,96%,100%{opacity:1;}97%{opacity:0.2;}98%{opacity:1;}99%{opacity:0.4;}}
-  @keyframes flicker2{0%,88%,92%,100%{opacity:1;}89%{opacity:0.1;}90%{opacity:1;}91%{opacity:0.3;}}
+  /* ── Main layout ── */
+  #app {
+    margin-top: 48px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 16px;
+    padding: 32px 22px 48px;
+    width: 100%;
+  }
 
-  .bulbs { display:flex; gap:6px; align-items:center; }
-  .bulb { width:7px; height:7px; border-radius:50%; animation:bulb-chase 1.2s linear infinite; }
-  .bulb:nth-child(1){background:#ff00cc;box-shadow:0 0 6px #ff00cc;animation-delay:0s;}
-  .bulb:nth-child(2){background:#ffe600;box-shadow:0 0 6px #ffe600;animation-delay:.15s;}
-  .bulb:nth-child(3){background:#00ffe7;box-shadow:0 0 6px #00ffe7;animation-delay:.3s;}
-  .bulb:nth-child(4){background:#ff4400;box-shadow:0 0 6px #ff4400;animation-delay:.45s;}
-  .bulb:nth-child(5){background:#ff00cc;box-shadow:0 0 6px #ff00cc;animation-delay:.6s;}
-  @keyframes bulb-chase{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.15;transform:scale(0.7);}}
+  /* ── Page header ── */
+  .page-header { text-align: center; }
+  .page-header h1 {
+    font-size: 2rem; font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .page-header p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+  }
 
-  #hud { display:flex; gap:20px; align-items:center; }
-  .hud-box { text-align:center; min-width:80px; padding:6px 12px; border:1px solid rgba(255,255,255,0.1); border-radius:4px; background:rgba(0,0,0,0.4); position:relative; }
-  .hud-box::before { content:''; position:absolute; inset:-1px; border-radius:4px; background:linear-gradient(135deg,rgba(255,0,204,0.3),rgba(0,255,231,0.3)); z-index:-1; filter:blur(4px); }
-  .hud-label { font-size:9px; letter-spacing:4px; color:#556677; margin-bottom:2px; }
-  .hud-val   { font-size:24px; font-weight:700; letter-spacing:2px; line-height:1.1; }
-  #score-val { color:#ff00cc; text-shadow:0 0 12px #ff00cc; }
-  #lives-val { color:#ffe600; text-shadow:0 0 12px #ffe600; }
-  #level-val { color:#00ffe7; text-shadow:0 0 12px #00ffe7; }
+  /* ── HUD ── */
+  #hud {
+    display: flex; gap: 10px;
+    width: 100%; max-width: 400px;
+  }
+  .hud-box {
+    flex: 1; text-align: center;
+    padding: 10px 8px;
+    background: var(--stat-bg);
+    border-radius: 12px;
+  }
+  .hud-label {
+    font-size: 0.6rem; font-weight: 600;
+    letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 3px;
+  }
+  .hud-val {
+    font-size: 1.35rem; font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--text-primary);
+  }
 
-  #canvas-wrap { position:relative; display:inline-block; cursor:none; }
-  #canvas-wrap::before { content:''; position:absolute; inset:-3px; border-radius:6px; background:linear-gradient(90deg,#ff00cc,#ffe600,#00ffe7,#ff4400,#ff00cc); background-size:300% 100%; animation:border-run 3s linear infinite; z-index:-1; filter:blur(2px); }
-  #canvas-wrap::after  { content:''; position:absolute; inset:-6px; border-radius:8px; background:linear-gradient(90deg,#ff00cc,#ffe600,#00ffe7,#ff4400,#ff00cc); background-size:300% 100%; animation:border-run 3s linear infinite; z-index:-2; filter:blur(8px); opacity:0.5; }
-  @keyframes border-run{0%{background-position:0% 50%;}100%{background-position:300% 50%;}}
-  canvas { display:block; border-radius:3px; }
+  /* ── Canvas ── */
+  #canvas-wrap {
+    position: relative; display: inline-block;
+    cursor: none;
+    border-radius: 16px;
+    box-shadow:
+      0 2px 8px rgba(0,0,0,0.08),
+      0 20px 60px rgba(0,0,0,0.12),
+      0 0 0 1px var(--card-border);
+    overflow: hidden;
+  }
+  canvas { display: block; border-radius: 16px; }
 
-  #overlay { position:absolute; inset:0; background:rgba(10,0,16,0.88); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; border-radius:3px; backdrop-filter:blur(4px); cursor:pointer; }
-  #overlay.hidden { display:none; }
-  .ov-icon  { font-size:50px; line-height:1; animation:pulse-icon 1.5s ease-in-out infinite; }
-  @keyframes pulse-icon{0%,100%{transform:scale(1);filter:brightness(1);}50%{transform:scale(1.15);filter:brightness(1.4);}}
-  .ov-title { font-family:'Arial Black',sans-serif; font-size:22px; letter-spacing:8px; }
-  .ov-hint  { font-size:11px; letter-spacing:3px; color:#445566; margin-top:2px; }
-  #ov-sub   { font-size:14px; letter-spacing:4px; color:#aabbcc; display:none; }
-  .ov-start .ov-icon  { color:#00ffe7; text-shadow:0 0 20px #00ffe7; }
-  .ov-start .ov-title { color:#00ffe7; text-shadow:0 0 18px #00ffe7,0 0 40px #00ffe7; }
-  .ov-dead  .ov-icon  { color:#ff4400; text-shadow:0 0 20px #ff4400; animation:none; }
-  .ov-dead  .ov-title { color:#ff4400; text-shadow:0 0 18px #ff4400,0 0 40px #ff4400; }
-  .ov-win   .ov-icon  { color:#ffe600; text-shadow:0 0 20px #ffe600; }
-  .ov-win   .ov-title { color:#ffe600; text-shadow:0 0 18px #ffe600,0 0 40px #ffe600; }
+  /* ── Overlay ── */
+  #overlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 8px;
+    border-radius: 16px;
+    cursor: pointer;
+  }
+  #overlay.hidden { display: none; }
 
-  /* Power-up label toast */
+  .ov-icon {
+    font-size: 48px; line-height: 1;
+    animation: pulse-icon 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse-icon {
+    0%,100% { transform: scale(1); }
+    50%      { transform: scale(1.1); }
+  }
+  .ov-title {
+    font-size: 1.4rem; font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #fff;
+  }
+  #ov-sub {
+    font-size: 0.9rem;
+    color: rgba(255,255,255,0.6);
+    display: none;
+  }
+  .ov-hint {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.35);
+    margin-top: 4px;
+  }
+
+  /* state colours */
+  .ov-start .ov-icon  { filter: drop-shadow(0 0 12px rgba(0,113,227,0.8)); }
+  .ov-dead  .ov-icon  { animation: none; }
+  .ov-dead  .ov-title { color: #ff453a; }
+  .ov-win   .ov-title { color: #30d158; }
+
+  /* ── Power-up toast ── */
   #powerup-toast {
-    position:absolute; bottom:40px; left:50%; transform:translateX(-50%);
-    font-size:11px; letter-spacing:3px; font-weight:700;
-    padding:4px 14px; border-radius:3px;
-    pointer-events:none; opacity:0; transition:opacity 0.2s;
-    white-space:nowrap;
+    position: absolute; bottom: 36px; left: 50%; transform: translateX(-50%);
+    font-size: 0.7rem; font-weight: 600;
+    letter-spacing: 0.04em; text-transform: uppercase;
+    padding: 5px 14px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(10px);
+    color: #fff;
+    pointer-events: none; opacity: 0;
+    transition: opacity 0.2s;
+    white-space: nowrap;
   }
-  #powerup-toast.show { opacity:1; }
+  #powerup-toast.show { opacity: 1; }
 
-  #hint { font-size:10px; letter-spacing:3px; color:#1e1030; margin-top:-4px; }
+  /* ── Hint ── */
+  #hint {
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+    letter-spacing: 0.01em;
+  }
 </style>
 </head>
 <body>
+
+<nav>
+  <div class="nav-inner">
+    <a class="nav-back" href="index.html">
+      <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Games
+    </a>
+    <span class="nav-title">Arkanoid</span>
+    <span class="nav-spacer"></span>
+  </div>
+</nav>
+
 <div id="app">
-  <div id="title-wrap">
-    <div class="bulbs"><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div></div>
-    &nbsp;
-    <div id="title">
-      <span class="t-a1">A</span><span class="t-r">R</span><span class="t-k">K</span><span class="t-a2">A</span><span class="t-n">N</span><span class="t-o">O</span><span class="t-i">I</span><span class="t-d">D</span>
-    </div>
-    &nbsp;
-    <div class="bulbs"><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div></div>
+  <div class="page-header">
+    <h1>Arkanoid</h1>
+    <p>Las Vegas Edition</p>
   </div>
 
   <div id="hud">
-    <div class="hud-box"><div class="hud-label">SCORE</div><div class="hud-val" id="score-val">0</div></div>
-    <div class="hud-box"><div class="hud-label">LEVEL</div><div class="hud-val" id="level-val">1</div></div>
-    <div class="hud-box"><div class="hud-label">LIVES</div><div class="hud-val" id="lives-val">♥♥♥</div></div>
+    <div class="hud-box"><div class="hud-label">Score</div><div class="hud-val" id="score-val">0</div></div>
+    <div class="hud-box"><div class="hud-label">Level</div><div class="hud-val" id="level-val">1</div></div>
+    <div class="hud-box"><div class="hud-label">Lives</div><div class="hud-val" id="lives-val">♥♥♥</div></div>
   </div>
 
   <div id="canvas-wrap">
     <canvas id="c"></canvas>
     <div id="overlay" class="ov-start">
       <div class="ov-icon">▶</div>
-      <div class="ov-title">INSERT COIN</div>
+      <div class="ov-title">Tap to Play</div>
       <div id="ov-sub"></div>
       <div class="ov-hint">move mouse · click to launch</div>
     </div>
     <div id="powerup-toast"></div>
   </div>
-  <div id="hint">← move mouse or finger to control paddle →</div>
+  <div id="hint">Move mouse or finger to control the paddle</div>
 </div>
 
 <script>
