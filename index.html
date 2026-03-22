@@ -3,139 +3,307 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>POOPI GAMES — ARCADE</title>
+<title>Poopi Games</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #fbfbfd;
+    --text-primary: #1d1d1f;
+    --text-secondary: #6e6e73;
+    --text-tertiary: #a1a1a6;
+    --card-bg: #fff;
+    --card-border: rgba(0,0,0,0.08);
+    --nav-bg: rgba(251,251,253,0.8);
+    --blue: #0071e3;
+    --blue-hover: #0077ed;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000;
+      --text-primary: #f5f5f7;
+      --text-secondary: #a1a1a6;
+      --text-tertiary: #6e6e73;
+      --card-bg: #1c1c1e;
+      --card-border: rgba(255,255,255,0.08);
+      --nav-bg: rgba(0,0,0,0.72);
+    }
+  }
+
+  html { scroll-behavior: smooth; }
+
   body {
-    background: #0a0010; min-height:100vh;
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    font-family:'Courier New',monospace; overflow:hidden;
-  }
-  body::before {
-    content:''; position:fixed; inset:0;
-    background:
-      radial-gradient(ellipse at 20% 50%,rgba(255,0,200,0.08) 0%,transparent 60%),
-      radial-gradient(ellipse at 80% 20%,rgba(0,200,255,0.08) 0%,transparent 60%),
-      radial-gradient(ellipse at 60% 80%,rgba(255,180,0,0.06) 0%,transparent 60%);
-    pointer-events:none; z-index:0;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
 
-  .container {
-    position:relative; z-index:1;
-    display:flex; flex-direction:column; align-items:center; gap:48px;
+  /* ── Nav ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: 48px;
+    background: var(--nav-bg);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--card-border);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .nav-inner {
+    width: 100%; max-width: 980px;
+    padding: 0 22px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .nav-logo {
+    font-size: 1.25rem; font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+    text-decoration: none;
+  }
+  .nav-links { display: flex; gap: 28px; }
+  .nav-links a {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+  .nav-links a:hover { color: var(--text-primary); }
+
+  /* ── Hero ── */
+  .hero {
+    padding-top: 120px;
+    padding-bottom: 80px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-eyebrow {
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 12px;
+  }
+  .hero h1 {
+    font-size: clamp(2.8rem, 7vw, 5.5rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    color: var(--text-primary);
+    margin-bottom: 20px;
+  }
+  .hero-sub {
+    font-size: clamp(1rem, 2vw, 1.3rem);
+    font-weight: 400;
+    color: var(--text-secondary);
+    max-width: 500px;
+    margin: 0 auto 36px;
+    line-height: 1.55;
   }
 
-  h1 {
-    font-size:clamp(2.5rem,8vw,5rem);
-    letter-spacing:0.18em;
-    text-transform:uppercase;
-    color:#fff;
-    text-shadow:
-      0 0 10px #ff00cc,
-      0 0 30px #ff00cc,
-      0 0 60px #ff00cc,
-      0 0 100px #ff00cc;
-    animation: flicker 4s infinite;
+  /* ── Games section ── */
+  .section {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 0 22px 100px;
   }
-
-  .subtitle {
-    font-size:1rem;
-    letter-spacing:0.4em;
-    color:#00ccff;
-    text-transform:uppercase;
-    text-shadow: 0 0 8px #00ccff, 0 0 20px #00ccff;
-    margin-top:-36px;
+  .section-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--card-border);
   }
 
   .games-grid {
-    display:flex;
-    flex-wrap:wrap;
-    gap:24px;
-    justify-content:center;
-    padding:0 24px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
   }
 
+  /* ── Game card ── */
   .game-card {
-    position:relative;
-    width:220px;
-    border:2px solid #ff00cc;
-    padding:28px 20px;
-    text-align:center;
-    text-decoration:none;
-    color:#fff;
-    background:rgba(255,0,200,0.05);
-    transition:all 0.2s;
-    box-shadow: 0 0 12px #ff00cc44, inset 0 0 12px #ff00cc11;
+    display: flex;
+    flex-direction: column;
+    background: var(--card-bg);
+    border-radius: 20px;
+    padding: 32px 28px 28px;
+    text-decoration: none;
+    color: var(--text-primary);
+    border: 1px solid var(--card-border);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 0 0 0.5px var(--card-border);
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .game-card::after {
+    content: '';
+    position: absolute; inset: 0;
+    border-radius: 20px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    background: radial-gradient(circle at 60% 40%, rgba(0,113,227,0.06), transparent 70%);
   }
   .game-card:hover {
-    background:rgba(255,0,200,0.15);
-    box-shadow: 0 0 30px #ff00cc88, inset 0 0 20px #ff00cc22;
-    transform:scale(1.05);
+    transform: translateY(-4px) scale(1.01);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
   }
-  .game-card::before {
-    content:''; position:absolute; inset:-1px;
-    background:linear-gradient(135deg,#ff00cc44,transparent 60%,#00ccff44);
-    pointer-events:none;
-  }
+  .game-card:hover::after { opacity: 1; }
+  .game-card:active { transform: scale(0.98); }
 
-  .game-icon {
-    font-size:2.8rem;
-    margin-bottom:14px;
-    display:block;
-    filter:drop-shadow(0 0 8px #ff00cc);
+  .game-icon-wrap {
+    width: 64px; height: 64px;
+    border-radius: 16px;
+    background: linear-gradient(145deg, #e8f0fe, #d2e3fc);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2rem;
+    margin-bottom: 20px;
+    flex-shrink: 0;
+  }
+  @media (prefers-color-scheme: dark) {
+    .game-icon-wrap { background: linear-gradient(145deg, #1e2d4a, #172340); }
   }
 
   .game-name {
-    font-size:1.1rem;
-    letter-spacing:0.15em;
-    text-transform:uppercase;
-    color:#fff;
-    text-shadow: 0 0 8px #ff00cc;
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+  }
+  .game-desc {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    flex: 1;
+    margin-bottom: 20px;
+  }
+  .game-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--blue);
+  }
+  .game-cta svg {
+    width: 14px; height: 14px;
+    transition: transform 0.2s ease;
+  }
+  .game-card:hover .game-cta svg { transform: translateX(3px); }
+
+  /* ── Feature strip ── */
+  .feature-strip {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 0 22px 80px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--card-border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .feature {
+    background: var(--bg);
+    padding: 32px 28px;
+    text-align: center;
+  }
+  .feature-icon { font-size: 1.8rem; margin-bottom: 10px; }
+  .feature-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .feature-text {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
   }
 
-  .game-tag {
-    margin-top:8px;
-    font-size:0.65rem;
-    letter-spacing:0.25em;
-    color:#00ccff;
-    text-shadow: 0 0 6px #00ccff;
+  /* ── Footer ── */
+  footer {
+    border-top: 1px solid var(--card-border);
+    padding: 20px 22px;
+    text-align: center;
+  }
+  .footer-inner {
+    max-width: 980px; margin: 0 auto;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
   }
 
-  .scanlines {
-    position:fixed; inset:0; pointer-events:none; z-index:2;
-    background:repeating-linear-gradient(
-      to bottom,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,0.06) 2px,
-      rgba(0,0,0,0.06) 4px
-    );
-  }
-
-  @keyframes flicker {
-    0%,95%,100% { opacity:1; }
-    96% { opacity:0.7; }
-    97% { opacity:1; }
-    98% { opacity:0.5; }
-    99% { opacity:1; }
+  @media (max-width: 600px) {
+    .feature-strip { grid-template-columns: 1fr; }
+    .nav-links { display: none; }
   }
 </style>
 </head>
 <body>
-<div class="scanlines"></div>
-<div class="container">
-  <div>
-    <h1>Poopi Games</h1>
-    <p class="subtitle">Select Your Game</p>
-  </div>
 
+<nav>
+  <div class="nav-inner">
+    <a class="nav-logo" href="#">Poopi Games</a>
+    <div class="nav-links">
+      <a href="#">Games</a>
+      <a href="#">About</a>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <p class="hero-eyebrow">New release</p>
+  <h1>Play. Win.<br>Repeat.</h1>
+  <p class="hero-sub">A curated collection of arcade classics, reimagined for the modern browser.</p>
+</section>
+
+<div class="section">
+  <p class="section-title">Available Now</p>
   <div class="games-grid">
+
     <a class="game-card" href="arkanoid.html">
-      <span class="game-icon">🧱</span>
+      <div class="game-icon-wrap">🧱</div>
       <div class="game-name">Arkanoid</div>
-      <div class="game-tag">Las Vegas Edition</div>
+      <p class="game-desc">Break every brick in the Las Vegas Edition of the classic arcade masterpiece.</p>
+      <span class="game-cta">
+        Play now
+        <svg viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M1 7h12M8 2l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
     </a>
+
   </div>
 </div>
+
+<div class="feature-strip">
+  <div class="feature">
+    <div class="feature-icon">🎮</div>
+    <div class="feature-title">Instant Play</div>
+    <p class="feature-text">No downloads. No installs. Just open and play.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">✨</div>
+    <div class="feature-title">Retro Reimagined</div>
+    <p class="feature-text">Classic gameplay with modern neon visuals.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">📱</div>
+    <div class="feature-title">Any Device</div>
+    <p class="feature-text">Mouse, keyboard, or touch — it all works.</p>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">Copyright © 2026 Poopi Games. All rights reserved.</div>
+</footer>
+
 </body>
 </html>
