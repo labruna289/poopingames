@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRINCE OF PERSIA: THE FIRST STEP</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#000; min-height:100vh;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  font-family:'Courier New',monospace; color:#f0c860; overflow:hidden;
+}
+body::after {
+  content:''; position:fixed; inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.08) 3px,rgba(0,0,0,0.08) 4px);
+  pointer-events:none; z-index:100;
+}
+#wrap { position:relative; display:flex; flex-direction:column; align-items:center; gap:6px; }
+#title-bar { font-size:11px; letter-spacing:4px; color:#c8a040; text-align:center; }
+canvas { display:block; image-rendering:pixelated; border:2px solid #3a2800; box-shadow:0 0 40px #c8601030; }
+#hud {
+  display:flex; gap:20px; align-items:center; font-size:11px; letter-spacing:2px;
+  width:640px; color:#806828;
+}
+#hud span { color:#f0c860; }
+#hud .keys { margin-left:auto; font-size:10px; color:#504018; }
+#overlay {
+  position:absolute; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  background:rgba(0,0,0,0.88); z-index:10;
+  width:640px; top:22px; bottom:26px;
+}
+#overlay h1 { font-size:30px; letter-spacing:8px; color:#f0c860; margin-bottom:6px; text-shadow:0 0 30px #f0c86060; }
+#overlay .sub { color:#806020; font-size:10px; margin-bottom:24px; letter-spacing:4px; }
+#overlay .msg { color:#c8a040; margin-bottom:24px; text-align:center; line-height:2.2; font-size:11px; letter-spacing:1px; }
+#overlay .press { color:#f0c860; font-size:12px; letter-spacing:3px; animation:blink 1s step-end infinite; }
+@keyframes blink { 50% { opacity:0; } }
+#nav { font-size:10px; letter-spacing:2px; }
+#nav a { color:#604020; text-decoration:none; }
+#nav a:hover { color:#c8a040; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="title-bar">⚔&nbsp; PRINCE OF PERSIA: THE FIRST STEP &nbsp;⚔</div>
+  <canvas id="c" width="640" height="360"></canvas>
+  <div id="hud">
+    <div>HEALTH&nbsp;<span id="h-hp">♥♥♥</span></div>
+    <div>TIME&nbsp;<span id="h-time">5:00</span></div>
+    <div>GUARDS&nbsp;<span id="h-guards">4</span></div>
+    <div class="keys">WASD / ↑↓←→ &nbsp;·&nbsp; SPACE = ATTACK</div>
+  </div>
+  <div id="nav"><a href="arkanoid.html">← ARKANOID</a> &nbsp;·&nbsp; <a href="liga-argentina.html">⚽ LIGA ARGENTINA</a></div>
+
+  <div id="overlay">
+    <h1>PRINCE OF PERSIA</h1>
+    <div class="sub">THE FIRST STEP — DUNGEON ESCAPE</div>
+    <div class="msg">
+      You are trapped in the palace dungeons.<br>
+      Find the <span style="color:#00ff88">glowing green exit</span> before time runs out.<br>
+      Guards will chase you — press <span style="color:#f0c860">SPACE</span> to strike when close.<br>
+      The <span style="color:#cc8844">minimap</span> shows guards in red.
+    </div>
+    <div class="press">PRESS SPACE TO BEGIN</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const CW = 640, CH = 360;
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const imgData = ctx.createImageData(CW, CH);
+const buf    = imgData.data;
+
+// ── MAP  (0=open  1=stone  2=exit door) ──────────────────────────────────────
+// 16 cols × 13 rows  — verified navigable from (1,1) to exit at (14,11)
+const MAP = [
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,0,0,0,1,0,0,0,0,0,0,1,0,0,0,1],
+  [1,0,1,0,1,0,1,1,1,0,1,1,0,1,0,1],
+  [1,0,1,0,0,0,0,0,1,0,0,0,0,1,0,1],
+  [1,0,1,1,1,1,1,0,1,1,1,0,1,1,0,1],
+  [1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1],
+  [1,1,0,1,1,1,1,1,0,0,1,1,1,0,1,1],
+  [1,0,0,0,0,0,0,1,0,0,0,0,1,0,0,1],
+  [1,0,1,1,1,0,0,1,1,1,0,0,1,1,0,1],
+  [1,0,0,0,1,0,0,0,0,1,0,0,0,0,0,1],
+  [1,1,1,0,1,1,1,0,0,1,1,1,0,1,1,1],
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+];
+const MROWS = MAP.length, MCOLS = MAP[0].length;
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+let px, py, pa, dirX, dirY, planeX, planeY;
+let health, timeLeft, attackCD, damageFlash, lastTS;
+let gameState = 'start';  // start | playing | dead | win
+let guards = [];
+
+const ATTACK_RANGE = 1.5;
+const ATTACK_CD    = 0.5;
+const GUARD_SPEED  = 1.1;
+const MAX_HP       = 3;
+const TOTAL_TIME   = 5 * 60;
+
+const zBuf = new Float32Array(CW);
+const keys = {};
+
+// ── INPUT ────────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Space') {
+    if (gameState === 'start' || gameState === 'dead' || gameState === 'win') startGame();
+  }
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+function startGame() {
+  px = 1.5; py = 1.5;
+  health = MAX_HP; timeLeft = TOTAL_TIME; attackCD = 0; damageFlash = 0;
+  setAngle(0);
+  guards = [
+    { x:5.5, y:1.5, alive:true, atkCD:1.0 },
+    { x:5.5, y:5.5, alive:true, atkCD:1.0 },
+    { x:9.5, y:7.5, alive:true, atkCD:1.0 },
+    { x:7.5, y:11.5, alive:true, atkCD:1.0 },
+  ];
+  gameState = 'playing';
+  document.getElementById('overlay').style.display = 'none';
+  lastTS = performance.now();
+  requestAnimationFrame(loop);
+}
+
+function setAngle(a) {
+  pa = a;
+  dirX   =  Math.cos(a); dirY   =  Math.sin(a);
+  planeX = -dirY * 0.66; planeY =  dirX * 0.66;
+}
+
+function isWall(x, y) {
+  const mx = Math.floor(x), my = Math.floor(y);
+  if (mx < 0 || mx >= MCOLS || my < 0 || my >= MROWS) return true;
+  return MAP[my][mx] === 1;
+}
+
+// ── UPDATE ───────────────────────────────────────────────────────────────────
+function update(dt) {
+  timeLeft -= dt;
+  if (timeLeft <= 0) { die('TIME'); return; }
+
+  // Rotate
+  const rot = 2.2 * dt;
+  if (keys['ArrowLeft']  || keys['KeyA']) setAngle(pa - rot);
+  if (keys['ArrowRight'] || keys['KeyD']) setAngle(pa + rot);
+
+  // Move
+  let mx = 0, my = 0;
+  if (keys['ArrowUp']   || keys['KeyW']) { mx += dirX; my += dirY; }
+  if (keys['ArrowDown'] || keys['KeyS']) { mx -= dirX; my -= dirY; }
+  if (mx !== 0 || my !== 0) {
+    const spd = 2.8 * dt / Math.hypot(mx, my);
+    const nx = px + mx * spd, ny = py + my * spd;
+    const r = 0.25;
+    if (!isWall(nx + Math.sign(mx) * r, py)) px = nx;
+    if (!isWall(px, ny + Math.sign(my) * r)) py = ny;
+  }
+
+  // Check exit
+  if (MAP[Math.floor(py)]?.[Math.floor(px)] === 2) { win(); return; }
+
+  // Attack
+  attackCD -= dt;
+  damageFlash = Math.max(0, damageFlash - dt * 3);
+  if (keys['Space'] && attackCD <= 0) {
+    attackCD = ATTACK_CD;
+    guards.forEach(g => {
+      if (!g.alive) return;
+      if (Math.hypot(g.x - px, g.y - py) < ATTACK_RANGE) g.alive = false;
+    });
+  }
+
+  // Guards
+  guards.forEach(g => {
+    if (!g.alive) return;
+    g.atkCD -= dt;
+    const dx = g.x - px, dy = g.y - py, dist = Math.hypot(dx, dy);
+    if (dist < 9) {
+      // Chase
+      const spd = GUARD_SPEED * dt;
+      const ang = Math.atan2(dy, dx);
+      const nx = g.x - Math.cos(ang) * spd;
+      const ny = g.y - Math.sin(ang) * spd;
+      if (!isWall(nx, g.y)) g.x = nx;
+      if (!isWall(g.x, ny)) g.y = ny;
+      // Attack
+      if (dist < 0.75 && g.atkCD <= 0) {
+        g.atkCD = 1.5;
+        health--;
+        damageFlash = 1;
+        if (health <= 0) { die('DEAD'); return; }
+      }
+    }
+  });
+
+  updateHUD();
+}
+
+function updateHUD() {
+  document.getElementById('h-hp').textContent     = '♥'.repeat(health) + '♡'.repeat(MAX_HP - health);
+  const m = Math.floor(timeLeft / 60), s = Math.floor(timeLeft % 60);
+  const tEl = document.getElementById('h-time');
+  tEl.textContent = `${m}:${s.toString().padStart(2,'0')}`;
+  tEl.style.color = timeLeft < 60 ? '#ff4444' : '#f0c860';
+  document.getElementById('h-guards').textContent = guards.filter(g => g.alive).length;
+}
+
+function die(reason) {
+  gameState = 'dead';
+  const msg = reason === 'TIME' ? 'You ran out of time...' : 'The guards have slain you...';
+  showOverlay(`<h1 style="color:#cc2200">YOU DIED</h1><div class="sub">${msg}</div><div class="msg">The dungeon claims another soul.</div><div class="press">PRESS SPACE TO TRY AGAIN</div>`);
+}
+function win() {
+  gameState = 'win';
+  showOverlay(`<h1 style="color:#00ff88">FREEDOM!</h1><div class="sub">YOU ESCAPED THE DUNGEON</div><div class="msg">The princess awaits...<br>Well done, Prince.</div><div class="press">PRESS SPACE TO PLAY AGAIN</div>`);
+}
+function showOverlay(html) {
+  const el = document.getElementById('overlay');
+  el.innerHTML = html;
+  el.style.display = '';
+}
+
+// ── RENDER ───────────────────────────────────────────────────────────────────
+function setPixel(x, y, r, g, b) {
+  const i = (y * CW + x) * 4;
+  buf[i] = r; buf[i+1] = g; buf[i+2] = b; buf[i+3] = 255;
+}
+
+function render() {
+  // Ceiling & floor
+  for (let y = 0; y < CH; y++) {
+    const t = Math.abs(y - CH / 2) / (CH / 2);
+    const isFloor = y > CH / 2;
+    if (isFloor) {
+      const v = Math.floor(t * 55 + 8);
+      for (let x = 0; x < CW; x++) setPixel(x, y, Math.floor(v*0.9), Math.floor(v*0.7), Math.floor(v*0.4));
+    } else {
+      const v = Math.floor(t * 25 + 4);
+      for (let x = 0; x < CW; x++) setPixel(x, y, v, v, Math.floor(v*1.2));
+    }
+  }
+
+  // Walls (DDA raycasting)
+  for (let col = 0; col < CW; col++) {
+    const camX = 2 * col / CW - 1;
+    const rdx = dirX + planeX * camX;
+    const rdy = dirY + planeY * camX;
+
+    let mx = Math.floor(px), my = Math.floor(py);
+    const ddx = Math.abs(rdx) < 1e-10 ? 1e30 : Math.abs(1 / rdx);
+    const ddy = Math.abs(rdy) < 1e-10 ? 1e30 : Math.abs(1 / rdy);
+    let sdx, sdy, sx, sy;
+
+    if (rdx < 0) { sx = -1; sdx = (px - mx) * ddx; }
+    else          { sx =  1; sdx = (mx + 1 - px) * ddx; }
+    if (rdy < 0) { sy = -1; sdy = (py - my) * ddy; }
+    else          { sy =  1; sdy = (my + 1 - py) * ddy; }
+
+    let side = 0, wt = 0;
+    for (let i = 0; i < 64; i++) {
+      if (sdx < sdy) { sdx += ddx; mx += sx; side = 0; }
+      else            { sdy += ddy; my += sy; side = 1; }
+      wt = MAP[my]?.[mx] ?? 1;
+      if (wt > 0) break;
+    }
+
+    const pwd = side === 0
+      ? (mx - px + (1 - sx) / 2) / rdx
+      : (my - py + (1 - sy) / 2) / rdy;
+
+    zBuf[col] = pwd;
+    const lh = Math.floor(CH / pwd);
+    const y0 = Math.max(0, Math.floor(CH / 2 - lh / 2));
+    const y1 = Math.min(CH - 1, Math.floor(CH / 2 + lh / 2));
+    const fog = Math.min(1, Math.max(0, 1 - pwd * 0.12));
+
+    let wr, wg, wb;
+    if (wt === 2) {
+      // Exit door — glowing green
+      wr = 0; wg = Math.floor(200 * fog + 30); wb = Math.floor(80 * fog);
+    } else {
+      // Stone wall
+      const b = Math.floor(145 * fog);
+      wr = Math.floor(b * 0.88); wg = Math.floor(b * 0.72); wb = Math.floor(b * 0.48);
+      if (side === 1) { wr = Math.floor(wr * 0.68); wg = Math.floor(wg * 0.68); wb = Math.floor(wb * 0.68); }
+      // Torch tint on some wall cells
+      if ((mx + my * 3) % 7 === 0) {
+        wr = Math.min(255, wr + Math.floor(60 * fog));
+        wg = Math.min(255, wg + Math.floor(20 * fog));
+      }
+    }
+    for (let y = y0; y <= y1; y++) setPixel(col, y, wr, wg, wb);
+  }
+
+  // Sprites (guards) — billboard
+  const alive = guards.filter(g => g.alive);
+  alive.sort((a, b) => Math.hypot(b.x-px,b.y-py) - Math.hypot(a.x-px,a.y-py));
+  alive.forEach(renderGuard);
+
+  // Pixel buffer → canvas
+  ctx.putImageData(imgData, 0, 0);
+
+  // Sword (drawn with ctx over pixel buffer)
+  drawSword();
+
+  // Damage vignette
+  if (damageFlash > 0) {
+    ctx.fillStyle = `rgba(200,0,0,${damageFlash * 0.35})`;
+    ctx.fillRect(0, 0, CW, CH);
+  }
+
+  // Low-time vignette
+  if (timeLeft < 30 && gameState === 'playing') {
+    const pulse = 0.15 + 0.12 * Math.sin(Date.now() / 200);
+    ctx.fillStyle = `rgba(180,0,0,${pulse})`;
+    ctx.fillRect(0, 0, CW, CH);
+  }
+
+  // Minimap
+  drawMinimap();
+}
+
+function renderGuard(g) {
+  const sx = g.x - px, sy = g.y - py;
+  const inv = 1 / (planeX * dirY - dirX * planeY);
+  const tx = inv * (dirY * sx - dirX * sy);
+  const tz = inv * (-planeY * sx + planeX * sy);
+  if (tz <= 0.15) return;
+
+  const scx  = Math.floor((CW / 2) * (1 + tx / tz));
+  const sprH = Math.abs(Math.floor(CH / tz));
+  const sprW = Math.floor(sprH * 0.55);
+  const y0   = Math.max(0, Math.floor(CH / 2 - sprH / 2));
+  const y1   = Math.min(CH - 1, Math.floor(CH / 2 + sprH / 2));
+  const x0   = Math.floor(scx - sprW / 2);
+  const x1   = Math.floor(scx + sprW / 2);
+  const fog  = Math.min(1, Math.max(0, 1 - tz * 0.12));
+
+  for (let x = x0; x < x1; x++) {
+    if (x < 0 || x >= CW || tz > zBuf[x]) continue;
+    const u = (x - x0) / (x1 - x0); // 0..1 across
+    for (let y = y0; y <= y1; y++) {
+      const v = (y - y0) / (y1 - y0); // 0..1 down
+      let r = 0, g2 = 0, b = 0, draw = false;
+      // Head
+      if (v > 0.05 && v < 0.25 && u > 0.25 && u < 0.75) {
+        r = Math.floor(195 * fog); g2 = Math.floor(145 * fog); b = Math.floor(90 * fog); draw = true;
+        // Helmet stripe
+        if (v < 0.12) { r = Math.floor(80 * fog); g2 = Math.floor(80 * fog); b = Math.floor(80 * fog); }
+      }
+      // Body / tunic
+      else if (v >= 0.25 && v < 0.78 && u > 0.12 && u < 0.88) {
+        r = Math.floor(160 * fog); g2 = Math.floor(25 * fog); b = Math.floor(25 * fog); draw = true;
+        // Belt
+        if (v > 0.55 && v < 0.63) { r = Math.floor(100 * fog); g2 = Math.floor(70 * fog); b = Math.floor(20 * fog); }
+        // Sword arm (right side)
+        if (u > 0.78 && v > 0.28 && v < 0.5) { r = Math.floor(175 * fog); g2 = Math.floor(175 * fog); b = Math.floor(190 * fog); draw = true; }
+      }
+      // Legs
+      else if (v >= 0.78 && u > 0.2 && u < 0.8) {
+        r = Math.floor(55 * fog); g2 = Math.floor(45 * fog); b = Math.floor(35 * fog); draw = true;
+      }
+      if (draw) setPixel(x, y, r, g2, b);
+    }
+  }
+}
+
+function drawSword() {
+  const swing = attackCD > 0 ? (1 - attackCD / ATTACK_CD) : 0;
+  const ox = Math.floor(swing * -70);
+  const oy = Math.floor(swing * -40);
+
+  ctx.save();
+  ctx.shadowColor = '#b0c8e0'; ctx.shadowBlur = 8;
+
+  // Blade
+  ctx.strokeStyle = '#d0e0f0'; ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(420 + ox, 280 + oy);
+  ctx.lineTo(470 + ox, 160 + oy);
+  ctx.stroke();
+
+  // Cross-guard
+  ctx.strokeStyle = '#c8a030'; ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(408 + ox, 248 + oy);
+  ctx.lineTo(438 + ox, 248 + oy);
+  ctx.stroke();
+
+  // Grip
+  ctx.strokeStyle = '#7a4818'; ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(417 + ox, 255 + oy);
+  ctx.lineTo(424 + ox, 290 + oy);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawMinimap() {
+  const sc = 6, pad = 8;
+  const mmW = MCOLS * sc, mmH = MROWS * sc;
+  const ox = CW - mmW - pad, oy = CH - mmH - pad;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(ox - 2, oy - 2, mmW + 4, mmH + 4);
+
+  for (let r = 0; r < MROWS; r++) {
+    for (let c = 0; c < MCOLS; c++) {
+      const v = MAP[r][c];
+      ctx.fillStyle = v === 1 ? '#5a3a10' : v === 2 ? '#00cc66' : '#160e04';
+      ctx.fillRect(ox + c * sc, oy + r * sc, sc - 1, sc - 1);
+    }
+  }
+
+  // Guards
+  guards.forEach(g => {
+    if (!g.alive) return;
+    ctx.fillStyle = '#ff3030';
+    ctx.fillRect(ox + g.x * sc - 2, oy + g.y * sc - 2, 4, 4);
+  });
+
+  // Player dot
+  ctx.fillStyle = '#f0c860';
+  ctx.beginPath();
+  ctx.arc(ox + px * sc, oy + py * sc, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Player direction
+  ctx.strokeStyle = '#f0c860'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(ox + px * sc, oy + py * sc);
+  ctx.lineTo(ox + (px + dirX * 2.5) * sc, oy + (py + dirY * 2.5) * sc);
+  ctx.stroke();
+}
+
+// ── GAME LOOP ─────────────────────────────────────────────────────────────────
+function loop(ts) {
+  if (gameState !== 'playing') return;
+  const dt = Math.min((ts - lastTS) / 1000, 0.05);
+  lastTS = ts;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+// Draw a still frame while on start screen
+(function initFrame() {
+  for (let i = 0; i < buf.length; i += 4) { buf[i]=8; buf[i+1]=6; buf[i+2]=4; buf[i+3]=255; }
+  ctx.putImageData(imgData, 0, 0);
+})();
+</script>
+</body>
+</html>

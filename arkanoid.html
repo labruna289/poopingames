@@ -88,6 +88,12 @@
   #powerup-toast.show { opacity:1; }
 
   #hint { font-size:10px; letter-spacing:3px; color:#1e1030; margin-top:-4px; }
+  #extra-nav { margin-top:8px; display:flex; gap:16px; }
+  #extra-nav a { font-size:10px; letter-spacing:2px; text-decoration:none; padding:4px 12px; border:1px solid #1a1030; transition:all .2s; }
+  #extra-nav a.green { color:#0a6; border-color:#0a63; }
+  #extra-nav a.green:hover { background:#0a61; box-shadow:0 0 8px #0a64; }
+  #extra-nav a.gold  { color:#806020; border-color:#60401a; }
+  #extra-nav a.gold:hover  { background:#40200a1a; box-shadow:0 0 8px #80602040; }
 </style>
 </head>
 <body>
@@ -119,6 +125,10 @@
     <div id="powerup-toast"></div>
   </div>
   <div id="hint">← move mouse or finger to control paddle →</div>
+  <div id="extra-nav">
+    <a class="gold" href="prince-of-persia.html">⚔ PRINCE OF PERSIA</a>
+    <a class="green" href="liga-argentina.html">⚽ LIGA ARGENTINA</a>
+  </div>
 </div>
 
 <script>
