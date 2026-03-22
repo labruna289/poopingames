@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pong — Poopi Games</title>
+<style>
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+  :root {
+    --bg: #fbfbfd;
+    --text-primary: #1d1d1f;
+    --text-secondary: #6e6e73;
+    --text-tertiary: #a1a1a6;
+    --card-bg: #fff;
+    --card-border: rgba(0,0,0,0.08);
+    --nav-bg: rgba(251,251,253,0.8);
+    --blue: #0071e3;
+    --stat-bg: rgba(0,0,0,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000;
+      --text-primary: #f5f5f7;
+      --text-secondary: #a1a1a6;
+      --text-tertiary: #6e6e73;
+      --card-bg: #1c1c1e;
+      --card-border: rgba(255,255,255,0.08);
+      --nav-bg: rgba(0,0,0,0.72);
+      --stat-bg: rgba(255,255,255,0.06);
+    }
+  }
+
+  body {
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: 48px;
+    background: var(--nav-bg);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--card-border);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .nav-inner {
+    width: 100%; max-width: 600px;
+    padding: 0 22px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .nav-back {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 0.85rem; color: var(--blue);
+    text-decoration: none;
+    transition: opacity 0.2s;
+  }
+  .nav-back:hover { opacity: 0.75; }
+  .nav-back svg { width: 16px; height: 16px; }
+  .nav-title {
+    font-size: 0.9rem; font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+  .nav-spacer { width: 60px; }
+
+  #app {
+    margin-top: 48px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 16px;
+    padding: 32px 22px 48px;
+    width: 100%;
+  }
+
+  .page-header { text-align: center; }
+  .page-header h1 {
+    font-size: 2rem; font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .page-header p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+  }
+
+  #hud {
+    display: flex; gap: 10px;
+    width: 100%; max-width: 400px;
+  }
+  .hud-box {
+    flex: 1; text-align: center;
+    padding: 10px 8px;
+    background: var(--stat-bg);
+    border-radius: 12px;
+  }
+  .hud-label {
+    font-size: 0.6rem; font-weight: 600;
+    letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 3px;
+  }
+  .hud-val {
+    font-size: 1.35rem; font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--text-primary);
+  }
+
+  #canvas-wrap {
+    position: relative; display: inline-block;
+    cursor: none;
+    border-radius: 16px;
+    box-shadow:
+      0 2px 8px rgba(0,0,0,0.08),
+      0 20px 60px rgba(0,0,0,0.12),
+      0 0 0 1px var(--card-border);
+    overflow: hidden;
+  }
+  canvas { display: block; border-radius: 16px; }
+
+  #overlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 8px;
+    border-radius: 16px;
+    cursor: pointer;
+  }
+  #overlay.hidden { display: none; }
+
+  .ov-icon {
+    font-size: 48px; line-height: 1;
+    animation: pulse-icon 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse-icon {
+    0%,100% { transform: scale(1); }
+    50%      { transform: scale(1.1); }
+  }
+  .ov-title {
+    font-size: 1.4rem; font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #fff;
+  }
+  .ov-sub {
+    font-size: 0.9rem;
+    color: rgba(255,255,255,0.6);
+  }
+  .ov-hint {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.35);
+    margin-top: 4px;
+  }
+
+  #hint {
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+    letter-spacing: 0.01em;
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a class="nav-back" href="index.html">
+      <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Games
+    </a>
+    <span class="nav-title">Pong</span>
+    <span class="nav-spacer"></span>
+  </div>
+</nav>
+
+<div id="app">
+  <div class="page-header">
+    <h1>Pong</h1>
+    <p>The original arcade classic — you vs the machine.</p>
+  </div>
+
+  <div id="hud">
+    <div class="hud-box">
+      <div class="hud-label">You</div>
+      <div class="hud-val" id="score-player">0</div>
+    </div>
+    <div class="hud-box">
+      <div class="hud-label">AI</div>
+      <div class="hud-val" id="score-ai">0</div>
+    </div>
+  </div>
+
+  <div id="canvas-wrap">
+    <canvas id="c" width="400" height="500"></canvas>
+    <div id="overlay">
+      <div class="ov-icon">🏓</div>
+      <div class="ov-title" id="ov-title">Pong</div>
+      <div class="ov-sub" id="ov-sub"></div>
+      <div class="ov-hint">Click or tap to play</div>
+    </div>
+  </div>
+
+  <p id="hint">Move mouse or touch to control your paddle</p>
+</div>
+
+<script>
+(function () {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const overlay = document.getElementById('overlay');
+  const ovTitle = document.getElementById('ov-title');
+  const ovSub = document.getElementById('ov-sub');
+  const scorePlayerEl = document.getElementById('score-player');
+  const scoreAiEl = document.getElementById('score-ai');
+
+  const W = canvas.width;
+  const H = canvas.height;
+  const PAD_W = 60;
+  const PAD_H = 10;
+  const PAD_Y_PLAYER = H - 30;
+  const PAD_Y_AI = 20;
+  const BALL_R = 6;
+  const WIN_SCORE = 7;
+  const AI_SPEED = 3.2;
+
+  let state = 'start'; // start | playing | scored | over
+  let scorePlayer = 0;
+  let scoreAi = 0;
+
+  let padPlayerX = W / 2;
+  let padAiX = W / 2;
+
+  let ball = { x: 0, y: 0, vx: 0, vy: 0 };
+
+  function resetBall(serveToPlayer) {
+    ball.x = W / 2;
+    ball.y = H / 2;
+    const angle = (Math.random() * 0.6 + 0.2) * (Math.random() < 0.5 ? 1 : -1);
+    const speed = 4.5;
+    ball.vx = Math.sin(angle) * speed;
+    ball.vy = Math.cos(angle) * speed * (serveToPlayer ? 1 : -1);
+  }
+
+  function showOverlay(title, sub) {
+    ovTitle.textContent = title;
+    ovSub.textContent = sub || '';
+    overlay.classList.remove('hidden');
+  }
+
+  function hideOverlay() {
+    overlay.classList.add('hidden');
+  }
+
+  function startGame() {
+    scorePlayer = 0;
+    scoreAi = 0;
+    scorePlayerEl.textContent = '0';
+    scoreAiEl.textContent = '0';
+    padPlayerX = W / 2;
+    padAiX = W / 2;
+    resetBall(true);
+    state = 'playing';
+    hideOverlay();
+  }
+
+  // Input
+  let targetX = W / 2;
+
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    targetX = (e.clientX - rect.left) * (W / rect.width);
+  });
+
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    targetX = (e.touches[0].clientX - rect.left) * (W / rect.width);
+  }, { passive: false });
+
+  overlay.addEventListener('click', () => {
+    if (state === 'start' || state === 'over') startGame();
+  });
+
+  canvas.addEventListener('click', () => {
+    if (state === 'start' || state === 'over') startGame();
+  });
+
+  // Drawing helpers
+  function drawRect(x, y, w, h, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(x - w / 2, y - h / 2, w, h, 4);
+    ctx.fill();
+  }
+
+  function drawBall(x, y, r, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawDashedLine() {
+    ctx.setLineDash([6, 8]);
+    ctx.strokeStyle = 'rgba(128,128,128,0.2)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, H / 2);
+    ctx.lineTo(W, H / 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Detect dark mode
+  function isDark() {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+
+  function getColors() {
+    const dark = isDark();
+    return {
+      bg: dark ? '#0a0a0a' : '#f2f2f7',
+      paddle: dark ? '#ffffff' : '#1d1d1f',
+      ball: '#0071e3',
+      dim: dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+    };
+  }
+
+  function update() {
+    if (state !== 'playing') return;
+
+    // Move player paddle toward mouse
+    const dx = targetX - padPlayerX;
+    padPlayerX += dx * 0.25;
+    padPlayerX = Math.max(PAD_W / 2, Math.min(W - PAD_W / 2, padPlayerX));
+
+    // AI tracks ball with a speed cap
+    const aiDiff = ball.x - padAiX;
+    const aiMove = Math.sign(aiDiff) * Math.min(Math.abs(aiDiff), AI_SPEED);
+    padAiX += aiMove;
+    padAiX = Math.max(PAD_W / 2, Math.min(W - PAD_W / 2, padAiX));
+
+    // Move ball
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+
+    // Wall bounce (left/right)
+    if (ball.x - BALL_R < 0) { ball.x = BALL_R; ball.vx *= -1; }
+    if (ball.x + BALL_R > W) { ball.x = W - BALL_R; ball.vx *= -1; }
+
+    // Player paddle collision (bottom)
+    if (
+      ball.vy > 0 &&
+      ball.y + BALL_R >= PAD_Y_PLAYER - PAD_H / 2 &&
+      ball.y + BALL_R <= PAD_Y_PLAYER + PAD_H / 2 + 4 &&
+      ball.x >= padPlayerX - PAD_W / 2 - BALL_R &&
+      ball.x <= padPlayerX + PAD_W / 2 + BALL_R
+    ) {
+      ball.y = PAD_Y_PLAYER - PAD_H / 2 - BALL_R;
+      const hit = (ball.x - padPlayerX) / (PAD_W / 2); // -1 to 1
+      const speed = Math.hypot(ball.vx, ball.vy) * 1.04;
+      const angle = hit * Math.PI * 0.35;
+      ball.vx = Math.sin(angle) * speed;
+      ball.vy = -Math.abs(Math.cos(angle) * speed);
+    }
+
+    // AI paddle collision (top)
+    if (
+      ball.vy < 0 &&
+      ball.y - BALL_R <= PAD_Y_AI + PAD_H / 2 &&
+      ball.y - BALL_R >= PAD_Y_AI - PAD_H / 2 - 4 &&
+      ball.x >= padAiX - PAD_W / 2 - BALL_R &&
+      ball.x <= padAiX + PAD_W / 2 + BALL_R
+    ) {
+      ball.y = PAD_Y_AI + PAD_H / 2 + BALL_R;
+      const hit = (ball.x - padAiX) / (PAD_W / 2);
+      const speed = Math.hypot(ball.vx, ball.vy) * 1.02;
+      const angle = hit * Math.PI * 0.35;
+      ball.vx = Math.sin(angle) * speed;
+      ball.vy = Math.abs(Math.cos(angle) * speed);
+    }
+
+    // Ball out of bounds
+    if (ball.y - BALL_R > H) {
+      // AI scores
+      scoreAi++;
+      scoreAiEl.textContent = scoreAi;
+      if (scoreAi >= WIN_SCORE) {
+        state = 'over';
+        showOverlay('Game Over', 'AI wins this round');
+      } else {
+        resetBall(false);
+      }
+    } else if (ball.y + BALL_R < 0) {
+      // Player scores
+      scorePlayer++;
+      scorePlayerEl.textContent = scorePlayer;
+      if (scorePlayer >= WIN_SCORE) {
+        state = 'over';
+        showOverlay('You Win!', `${scorePlayer} – ${scoreAi}`);
+      } else {
+        resetBall(true);
+      }
+    }
+  }
+
+  function draw() {
+    const c = getColors();
+
+    ctx.fillStyle = c.bg;
+    ctx.fillRect(0, 0, W, H);
+
+    drawDashedLine();
+
+    // Paddles
+    drawRect(padAiX, PAD_Y_AI, PAD_W, PAD_H, c.paddle);
+    drawRect(padPlayerX, PAD_Y_PLAYER, PAD_W, PAD_H, c.paddle);
+
+    // Ball
+    if (state === 'playing') {
+      drawBall(ball.x, ball.y, BALL_R, c.ball);
+    }
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // Init
+  showOverlay('Pong', '');
+  loop();
+})();
+</script>
+
+</body>
+</html>
