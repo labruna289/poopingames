@@ -3,148 +3,254 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SLINGSHOT — LAS VEGAS</title>
+<title>Slingshot — Poopi Games</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+  :root {
+    --bg: #fbfbfd;
+    --text-primary: #1d1d1f;
+    --text-secondary: #6e6e73;
+    --text-tertiary: #a1a1a6;
+    --card-bg: #fff;
+    --card-border: rgba(0,0,0,0.08);
+    --nav-bg: rgba(251,251,253,0.8);
+    --blue: #0071e3;
+    --stat-bg: rgba(0,0,0,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000;
+      --text-primary: #f5f5f7;
+      --text-secondary: #a1a1a6;
+      --text-tertiary: #6e6e73;
+      --card-bg: #1c1c1e;
+      --card-border: rgba(255,255,255,0.08);
+      --nav-bg: rgba(0,0,0,0.72);
+      --stat-bg: rgba(255,255,255,0.06);
+    }
+  }
+
   body {
-    background:#0a0010; min-height:100vh;
-    display:flex; align-items:center; justify-content:center;
-    font-family:'Courier New',monospace; overflow:hidden;
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
-  body::before {
-    content:''; position:fixed; inset:0;
-    background:
-      radial-gradient(ellipse at 20% 50%,rgba(255,0,200,0.08) 0%,transparent 60%),
-      radial-gradient(ellipse at 80% 20%,rgba(0,200,255,0.08) 0%,transparent 60%),
-      radial-gradient(ellipse at 60% 80%,rgba(255,180,0,0.06) 0%,transparent 60%);
-    pointer-events:none; z-index:0;
+
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: 48px;
+    background: var(--nav-bg);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--card-border);
+    display: flex; align-items: center; justify-content: center;
   }
-  body::after {
-    content:''; position:fixed; inset:0;
-    background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.12) 3px,rgba(0,0,0,0.12) 4px);
-    pointer-events:none; z-index:200;
+  .nav-inner {
+    width: 100%; max-width: 620px;
+    padding: 0 22px;
+    display: flex; align-items: center; justify-content: space-between;
   }
-  #app { position:relative; z-index:10; display:flex; flex-direction:column; align-items:center; gap:12px; padding:20px; }
+  .nav-back {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 0.85rem; color: var(--blue);
+    text-decoration: none;
+    transition: opacity 0.2s;
+  }
+  .nav-back:hover { opacity: 0.75; }
+  .nav-back svg { width: 16px; height: 16px; }
+  .nav-title {
+    font-size: 0.9rem; font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+  .nav-spacer { width: 60px; }
 
-  #title-wrap { display:flex; align-items:center; }
-  #title { font-family:'Arial Black',sans-serif; font-size:38px; font-weight:900; letter-spacing:5px; line-height:1; user-select:none; }
-  .t1{color:#ff00cc;text-shadow:0 0 10px #ff00cc,0 0 30px #ff00cc;}
-  .t2{color:#ffffff;text-shadow:0 0 10px #fff;animation:flicker1 4s infinite;}
-  .t3{color:#ffe600;text-shadow:0 0 10px #ffe600,0 0 30px #ffe600;}
-  .t4{color:#00ffe7;text-shadow:0 0 10px #00ffe7,0 0 30px #00ffe7;animation:flicker2 6s infinite;}
-  .t5{color:#ff4400;text-shadow:0 0 10px #ff4400,0 0 30px #ff4400;}
-  .t6{color:#cc00ff;text-shadow:0 0 10px #cc00ff,0 0 30px #cc00ff;}
-  .t7{color:#ffe600;text-shadow:0 0 10px #ffe600;animation:flicker1 5s infinite;}
-  .t8{color:#00ffe7;text-shadow:0 0 10px #00ffe7;}
-  .t9{color:#ff00cc;text-shadow:0 0 10px #ff00cc;}
-  @keyframes flicker1{0%,96%,100%{opacity:1;}97%{opacity:0.2;}98%{opacity:1;}99%{opacity:0.4;}}
-  @keyframes flicker2{0%,88%,92%,100%{opacity:1;}89%{opacity:0.1;}90%{opacity:1;}91%{opacity:0.3;}}
+  #app {
+    margin-top: 48px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 16px;
+    padding: 32px 22px 48px;
+    width: 100%;
+  }
 
-  .bulbs{display:flex;gap:6px;align-items:center;}
-  .bulb{width:7px;height:7px;border-radius:50%;animation:bulb-chase 1.2s linear infinite;}
-  .bulb:nth-child(1){background:#ff00cc;box-shadow:0 0 6px #ff00cc;animation-delay:0s;}
-  .bulb:nth-child(2){background:#ffe600;box-shadow:0 0 6px #ffe600;animation-delay:.15s;}
-  .bulb:nth-child(3){background:#00ffe7;box-shadow:0 0 6px #00ffe7;animation-delay:.3s;}
-  .bulb:nth-child(4){background:#ff4400;box-shadow:0 0 6px #ff4400;animation-delay:.45s;}
-  .bulb:nth-child(5){background:#ff00cc;box-shadow:0 0 6px #ff00cc;animation-delay:.6s;}
-  @keyframes bulb-chase{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.15;transform:scale(0.7);}}
+  .page-header { text-align: center; }
+  .page-header h1 {
+    font-size: 2rem; font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .page-header p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+  }
 
-  #hud{display:flex;gap:20px;align-items:center;}
-  .hud-box{text-align:center;min-width:80px;padding:6px 12px;border:1px solid rgba(255,255,255,0.1);border-radius:4px;background:rgba(0,0,0,0.4);position:relative;}
-  .hud-box::before{content:'';position:absolute;inset:-1px;border-radius:4px;background:linear-gradient(135deg,rgba(255,0,204,0.3),rgba(0,255,231,0.3));z-index:-1;filter:blur(4px);}
-  .hud-label{font-size:9px;letter-spacing:4px;color:#556677;margin-bottom:2px;}
-  .hud-val{font-size:24px;font-weight:700;letter-spacing:2px;line-height:1.1;}
-  #score-val{color:#ff00cc;text-shadow:0 0 12px #ff00cc;}
-  #balls-val{color:#ffe600;text-shadow:0 0 12px #ffe600;}
-  #level-val{color:#00ffe7;text-shadow:0 0 12px #00ffe7;}
+  #hud {
+    display: flex; gap: 10px;
+    width: 100%; max-width: 560px;
+  }
+  .hud-box {
+    flex: 1; text-align: center;
+    padding: 10px 8px;
+    background: var(--stat-bg);
+    border-radius: 12px;
+  }
+  .hud-label {
+    font-size: 0.6rem; font-weight: 600;
+    letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 3px;
+  }
+  .hud-val {
+    font-size: 1.35rem; font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--text-primary);
+  }
 
-  #canvas-wrap{position:relative;display:inline-block;cursor:crosshair;}
-  #canvas-wrap::before{content:'';position:absolute;inset:-3px;border-radius:6px;background:linear-gradient(90deg,#ff00cc,#ffe600,#00ffe7,#ff4400,#ff00cc);background-size:300% 100%;animation:border-run 3s linear infinite;z-index:-1;filter:blur(2px);}
-  #canvas-wrap::after{content:'';position:absolute;inset:-6px;border-radius:8px;background:linear-gradient(90deg,#ff00cc,#ffe600,#00ffe7,#ff4400,#ff00cc);background-size:300% 100%;animation:border-run 3s linear infinite;z-index:-2;filter:blur(8px);opacity:0.5;}
-  @keyframes border-run{0%{background-position:0% 50%;}100%{background-position:300% 50%;}}
-  canvas{display:block;border-radius:3px;}
+  #canvas-wrap {
+    position: relative; display: inline-block;
+    cursor: crosshair;
+    border-radius: 16px;
+    box-shadow:
+      0 2px 8px rgba(0,0,0,0.08),
+      0 20px 60px rgba(0,0,0,0.12),
+      0 0 0 1px var(--card-border);
+    overflow: hidden;
+  }
+  canvas { display: block; border-radius: 16px; }
 
-  #overlay{position:absolute;inset:0;background:rgba(10,0,16,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border-radius:3px;backdrop-filter:blur(4px);cursor:pointer;}
-  #overlay.hidden{display:none;}
-  .ov-icon{font-size:50px;line-height:1;animation:pulse-icon 1.5s ease-in-out infinite;}
-  @keyframes pulse-icon{0%,100%{transform:scale(1);}50%{transform:scale(1.15);}}
-  .ov-title{font-family:'Arial Black',sans-serif;font-size:22px;letter-spacing:8px;}
-  .ov-hint{font-size:11px;letter-spacing:3px;color:#445566;margin-top:2px;}
-  #ov-sub{font-size:14px;letter-spacing:4px;color:#aabbcc;display:none;}
-  .ov-start .ov-icon{color:#00ffe7;text-shadow:0 0 20px #00ffe7;}
-  .ov-start .ov-title{color:#00ffe7;text-shadow:0 0 18px #00ffe7,0 0 40px #00ffe7;}
-  .ov-dead .ov-icon{color:#ff4400;text-shadow:0 0 20px #ff4400;animation:none;}
-  .ov-dead .ov-title{color:#ff4400;text-shadow:0 0 18px #ff4400,0 0 40px #ff4400;}
-  .ov-win .ov-icon{color:#ffe600;text-shadow:0 0 20px #ffe600;}
-  .ov-win .ov-title{color:#ffe600;text-shadow:0 0 18px #ffe600,0 0 40px #ffe600;}
+  #overlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 8px;
+    border-radius: 16px;
+    cursor: pointer;
+  }
+  #overlay.hidden { display: none; }
 
-  #toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:3px;font-weight:700;padding:4px 14px;border-radius:3px;pointer-events:none;opacity:0;transition:opacity 0.2s;white-space:nowrap;}
-  #toast.show{opacity:1;}
-  #hint{font-size:10px;letter-spacing:3px;color:#1e1030;margin-top:-4px;}
+  .ov-icon {
+    font-size: 48px; line-height: 1;
+    animation: pulse-icon 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse-icon {
+    0%,100% { transform: scale(1); }
+    50%      { transform: scale(1.1); }
+  }
+  .ov-title {
+    font-size: 1.4rem; font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #fff;
+  }
+  .ov-sub {
+    font-size: 0.9rem;
+    color: rgba(255,255,255,0.6);
+    display: none;
+  }
+  .ov-hint {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.35);
+    margin-top: 4px;
+  }
+
+  .ov-dead .ov-icon  { animation: none; }
+  .ov-dead .ov-title { color: #ff453a; }
+  .ov-win  .ov-title { color: #ffd60a; }
+
+  #hint {
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+    letter-spacing: 0.01em;
+  }
 </style>
 </head>
 <body>
+
+<nav>
+  <div class="nav-inner">
+    <a class="nav-back" href="index.html">
+      <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Games
+    </a>
+    <span class="nav-title">Slingshot</span>
+    <span class="nav-spacer"></span>
+  </div>
+</nav>
+
 <div id="app">
-  <div id="title-wrap">
-    <div class="bulbs"><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div></div>
-    &nbsp;
-    <div id="title">
-      <span class="t1">S</span><span class="t2">L</span><span class="t3">I</span><span class="t4">N</span><span class="t5">G</span><span class="t6">S</span><span class="t7">H</span><span class="t8">O</span><span class="t9">T</span>
-    </div>
-    &nbsp;
-    <div class="bulbs"><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div></div>
+  <div class="page-header">
+    <h1>Slingshot</h1>
+    <p>Pull back, aim, and launch. Take down every target.</p>
   </div>
 
   <div id="hud">
-    <div class="hud-box"><div class="hud-label">SCORE</div><div class="hud-val" id="score-val">0</div></div>
-    <div class="hud-box"><div class="hud-label">LEVEL</div><div class="hud-val" id="level-val">1</div></div>
-    <div class="hud-box"><div class="hud-label">BALLS</div><div class="hud-val" id="balls-val">●●●●●</div></div>
+    <div class="hud-box">
+      <div class="hud-label">Score</div>
+      <div class="hud-val" id="score-val">0</div>
+    </div>
+    <div class="hud-box">
+      <div class="hud-label">Level</div>
+      <div class="hud-val" id="level-val">1</div>
+    </div>
+    <div class="hud-box">
+      <div class="hud-label">Balls</div>
+      <div class="hud-val" id="balls-val">5</div>
+    </div>
   </div>
 
   <div id="canvas-wrap">
     <canvas id="c"></canvas>
-    <div id="overlay" class="ov-start">
-      <div class="ov-icon">🎯</div>
-      <div class="ov-title">INSERT COIN</div>
-      <div id="ov-sub"></div>
-      <div class="ov-hint">drag & release to shoot</div>
+    <div id="overlay">
+      <div class="ov-icon">🏹</div>
+      <div class="ov-title" id="ov-title">Slingshot</div>
+      <div class="ov-sub" id="ov-sub"></div>
+      <div class="ov-hint" id="ov-hint">Click or tap to play</div>
     </div>
-    <div id="toast"></div>
   </div>
-  <div id="hint">← drag the ball back and release to launch →</div>
+
+  <p id="hint">Drag the ball back and release to launch</p>
 </div>
 
 <script>
 (function(){
   // ── World & View ──────────────────────────────────────────────
-  const VW=560, VH=360;          // visible canvas size
-  const WORLD_W=1800;            // total world width
-  const GROUND_Y=VH-50;         // ground in view-space (constant)
+  const VW=560, VH=360;
+  const WORLD_W=1800;
+  const GROUND_Y=VH-50;
   const GRAVITY=0.32;
   const BOUNCE=0.42, FRICTION=0.80;
   const BALL_R=11;
   const MAX_PULL=80;
-  const SLING_WX=110, SLING_WY=GROUND_Y-60; // sling in world-space
+  const SLING_WX=110, SLING_WY=GROUND_Y-60;
 
-  // camera: camX is the world-x that maps to view x=0
   let camX=0, camTargetX=0;
 
   function toScreen(wx){ return wx - camX; }
-  function toWorld(sx){ return sx + camX; }
 
-  // ── Level generator — towers grow taller each level ──────────────
+  // ── Level generator ───────────────────────────────────────────
   const GY = GROUND_Y;
 
-  // Build a tower: cols wide, rows tall, starting at world-x ox, brick size s, hp value
   function makeTower(ox, cols, rows, s, hp) {
     const pad = 2, targets = [];
     for (let r = 0; r < rows; r++) {
-      const rowCols = Math.max(1, cols - r); // taper toward top
-      const rowX = ox + r * (s + pad) / 2;  // center each row
+      const rowCols = Math.max(1, cols - r);
+      const rowX = ox + r * (s + pad) / 2;
       for (let c = 0; c < rowCols; c++) {
         targets.push({
           x: rowX + c * (s + pad),
-          y: GY - (r + 1) * s - r * pad,  // y = top edge of brick
+          y: GY - (r + 1) * s - r * pad,
           w: s, h: s, hp, maxHp: hp
         });
       }
@@ -152,30 +258,25 @@
     return targets;
   }
 
-  // Generate level config: each level adds +2 rows to tower height
   function buildLevel(lvl) {
-    const baseRows = 3;          // level 1 starts at 3 rows tall
-    const rows = baseRows + (lvl - 1) * 2;  // +2 rows per level
-    const balls = 4 + lvl;       // more balls as towers grow
-    const s = 26;                // brick size
+    const baseRows = 3;
+    const rows = baseRows + (lvl - 1) * 2;
+    const balls = 4 + lvl;
+    const s = 26;
     const pad = 3;
-    // Number of towers: 1 at lvl1, 2 at lvl2, 3 at lvl3+
     const numTowers = Math.min(lvl, 3);
     const spacing = numTowers === 1 ? 0 : numTowers === 2 ? 200 : 160;
     const baseX = numTowers === 1 ? 1310 : numTowers === 2 ? 1220 : 1160;
     let targets = [];
     for (let t = 0; t < numTowers; t++) {
       const ox = baseX + t * (spacing + (s + pad) * 3);
-      const hp = Math.min(t + 1, 3);  // left=1hp, mid=2hp, right=3hp
+      const hp = Math.min(t + 1, 3);
       targets = targets.concat(makeTower(ox, 4, rows, s, hp));
     }
     return { balls, targets };
   }
 
-  // Pre-build 5 levels (infinite loop beyond that reuses last pattern + more rows)
-  function getLevelCfg(lvl) { return buildLevel(lvl); }
-
-  // ── DOM ──────────────────────────────────────────────────────
+  // ── DOM ───────────────────────────────────────────────────────
   const canvas=document.getElementById('c');
   const ctx=canvas.getContext('2d');
   canvas.width=VW; canvas.height=VH;
@@ -183,47 +284,32 @@
   const ballsEl=document.getElementById('balls-val');
   const levelEl=document.getElementById('level-val');
   const overlay=document.getElementById('overlay');
-  const ovIcon=overlay.querySelector('.ov-icon');
-  const ovTitle=overlay.querySelector('.ov-title');
+  const ovTitle=document.getElementById('ov-title');
   const ovSub=document.getElementById('ov-sub');
-  const toast=document.getElementById('toast');
-  let toastTimer=null;
+  const ovHint=document.getElementById('ov-hint');
 
-  // ── State ────────────────────────────────────────────────────
+  // ── State ─────────────────────────────────────────────────────
   let score,ballsLeft,level,running,loopId;
   let targets=[],particles=[],trails=[];
   let ball=null;
   let pulling=false,pullX=0,pullY=0;
   let settling=false,settleTimer=0;
 
-  // ── Toast ────────────────────────────────────────────────────
-  function showToast(msg,color){
-    toast.textContent=msg; toast.style.color=color;
-    toast.style.border='1px solid '+color;
-    toast.style.background=color+'22';
-    toast.style.textShadow='0 0 8px '+color;
-    toast.classList.add('show');
-    if(toastTimer)clearTimeout(toastTimer);
-    toastTimer=setTimeout(()=>toast.classList.remove('show'),1600);
-  }
-
-  // ── Camera ───────────────────────────────────────────────────
+  // ── Camera ────────────────────────────────────────────────────
   function updateCamera(){
     const LERP=0.06;
-    // While pulling / idle: show slingshot
     if(!ball||!ball.flying){
       camTargetX=0;
-    } else if(ball.flying){
-      // Follow ball, keep it centered-ish
+    } else {
       camTargetX=ball.x - VW*0.35;
     }
     camTargetX=Math.max(0, Math.min(WORLD_W-VW, camTargetX));
     camX+=(camTargetX-camX)*LERP;
   }
 
-  // ── Init ─────────────────────────────────────────────────────
+  // ── Init ──────────────────────────────────────────────────────
   function initLevel(){
-    const cfg=getLevelCfg(level);
+    const cfg=buildLevel(level);
     targets=cfg.targets.map(t=>({
       x:t.x, y:t.y, w:t.w, h:t.h, hp:t.hp, maxHp:t.hp,
       vx:0, vy:0, flash:0,
@@ -239,7 +325,7 @@
     score=0; level=1;
     scoreEl.textContent=0; levelEl.textContent=1;
     initLevel();
-    overlay.className='ov-start hidden'; ovSub.style.display='none';
+    overlay.className='hidden';
     running=true;
     if(loopId)cancelAnimationFrame(loopId);
     loopId=requestAnimationFrame(gameLoop);
@@ -248,17 +334,16 @@
   function resetBall(){
     ball={x:SLING_WX,y:SLING_WY,vx:0,vy:0,r:BALL_R,flying:false,settled:false};
     pulling=false; settling=false; settleTimer=0;
-    // Snap cam back
     camTargetX=0;
   }
 
   function updateHUD(){
-    ballsEl.textContent='●'.repeat(Math.max(0,ballsLeft));
+    ballsEl.textContent=Math.max(0,ballsLeft);
     scoreEl.textContent=score;
     levelEl.textContent=level;
   }
 
-  // ── Particles ────────────────────────────────────────────────
+  // ── Particles ─────────────────────────────────────────────────
   function spawnHit(x,y,color){
     for(let i=0;i<16;i++){
       const a=Math.random()*Math.PI*2,sp=2+Math.random()*5;
@@ -272,11 +357,10 @@
     }
   }
 
-  // ── Physics ──────────────────────────────────────────────────
+  // ── Physics ───────────────────────────────────────────────────
   function updateBall(){
     if(!ball.flying)return;
 
-    // Trail (world coords stored)
     trails.push({x:ball.x,y:ball.y,life:1});
     if(trails.length>24)trails.shift();
 
@@ -284,7 +368,6 @@
     ball.x+=ball.vx;
     ball.y+=ball.vy;
 
-    // Ground
     if(ball.y+ball.r>=GROUND_Y){
       ball.y=GROUND_Y-ball.r;
       ball.vy*=-BOUNCE;
@@ -293,12 +376,10 @@
       if(Math.abs(ball.vy)<0.8)ball.vy=0;
       if(Math.abs(ball.vx)<0.3&&Math.abs(ball.vy)<0.5)ball.settled=true;
     }
-    // World walls
     if(ball.x-ball.r<0){ball.x=ball.r;ball.vx*=-BOUNCE;}
     if(ball.x+ball.r>WORLD_W){ball.x=WORLD_W-ball.r;ball.vx*=-BOUNCE;}
     if(ball.y-ball.r<0){ball.y=ball.r;ball.vy*=-BOUNCE;}
 
-    // Target collisions
     targets.forEach(t=>{
       if(t.hp<=0)return;
       if(ball.x+ball.r>t.x&&ball.x-ball.r<t.x+t.w&&ball.y+ball.r>t.y&&ball.y-ball.r<t.y+t.h){
@@ -313,7 +394,6 @@
         score+=pts; updateHUD();
         const cols=['#00ffe7','#ffe600','#ff00cc'];
         spawnHit(cx,cy,cols[Math.min(t.maxHp-1,2)]);
-        if(t.hp<=0)showToast('+'+pts*2+' DESTROYED!','#ffe600');
       }
     });
   }
@@ -338,75 +418,64 @@
     trails.forEach(t=>t.life-=0.06);
   }
 
-  // ── Draw ─────────────────────────────────────────────────────
-  function draw(){
-    ctx.fillStyle='#0a0010'; ctx.fillRect(0,0,VW,VH);
+  // ── Draw ──────────────────────────────────────────────────────
+  const isDark = () => window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-    // Draw world content with camera offset
+  function draw(){
+    const dark = isDark();
+    const bgColor = dark ? '#0a0a12' : '#f0f0f5';
+
+    ctx.fillStyle=bgColor; ctx.fillRect(0,0,VW,VH);
+
     ctx.save();
     ctx.translate(-camX,0);
 
-    drawWorld();
+    drawWorld(dark);
     drawSlingshot();
     drawAimGuide();
     drawTargets();
-    drawBall();
+    drawBallEl();
     drawParticles();
 
     ctx.restore();
 
-    // UI drawn in screen space (no translate)
-    drawHUD();
-
-    // Neon border
-    ctx.save();
-    ctx.strokeStyle='#ff00cc'; ctx.lineWidth=2;
-    ctx.shadowColor='#ff00cc'; ctx.shadowBlur=20;
-    ctx.strokeRect(1,1,VW-2,VH-2);
-    ctx.restore();
+    drawMinimap();
+    drawCanvasHint();
   }
 
-  function drawWorld(){
-    // Parallax star dots far BG (static, subtle)
-    ctx.fillStyle='rgba(255,255,255,0.06)';
-    // Deterministic stars based on seed
+  function drawWorld(dark){
+    // Subtle star dots
+    ctx.fillStyle = dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
     for(let i=0;i<80;i++){
       const sx=((i*337)%WORLD_W), sy=((i*179)%(GROUND_Y-20));
       ctx.fillRect(sx,sy,1,1);
     }
 
-    // Distant neon city silhouette (decorative)
-    ctx.fillStyle='rgba(255,0,200,0.06)';
+    // City silhouette
+    ctx.fillStyle='rgba(255,0,200,0.05)';
     const buildings=[
       [600,80],[640,50],[680,70],[730,40],[780,60],[850,30],[920,55],[980,45],
       [1050,70],[1100,35],[1160,60],[1250,25],[1350,50],[1450,40],[1550,65],[1650,30],[1720,55]
     ];
-    buildings.forEach(([bx,bh])=>{
-      ctx.fillRect(bx,GROUND_Y-bh,30,bh);
-    });
-
-    // Grid lines on ground
-    ctx.strokeStyle='rgba(255,0,200,0.04)'; ctx.lineWidth=0.5;
-    for(let x=0;x<=WORLD_W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,VH);ctx.stroke();}
-    for(let y=0;y<=VH;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(WORLD_W,y);ctx.stroke();}
+    buildings.forEach(([bx,bh])=>{ ctx.fillRect(bx,GROUND_Y-bh,30,bh); });
 
     // Ground line
     ctx.save();
-    ctx.shadowColor='#ff00cc'; ctx.shadowBlur=10;
-    ctx.strokeStyle='#ff00cc66'; ctx.lineWidth=2;
+    ctx.shadowColor='#ff00cc'; ctx.shadowBlur=8;
+    ctx.strokeStyle='rgba(255,0,204,0.4)'; ctx.lineWidth=2;
     ctx.beginPath(); ctx.moveTo(0,GROUND_Y); ctx.lineTo(WORLD_W,GROUND_Y); ctx.stroke();
     const gg=ctx.createLinearGradient(0,GROUND_Y,0,VH);
-    gg.addColorStop(0,'rgba(255,0,200,0.1)'); gg.addColorStop(1,'rgba(255,0,200,0)');
+    gg.addColorStop(0,'rgba(255,0,200,0.08)'); gg.addColorStop(1,'rgba(255,0,200,0)');
     ctx.fillStyle=gg; ctx.fillRect(0,GROUND_Y,WORLD_W,VH-GROUND_Y);
     ctx.restore();
 
-    // Distance marker arrow pointing to targets (only when cam near sling)
+    // Target arrow hint
     if(camX<200 && (!ball||!ball.flying)){
       ctx.save();
       ctx.globalAlpha=0.5+0.3*Math.sin(Date.now()/400);
-      ctx.fillStyle='#ffe600'; ctx.strokeStyle='#ffe600';
-      ctx.shadowColor='#ffe600'; ctx.shadowBlur=12;
-      ctx.font='bold 12px Courier New'; ctx.textAlign='center';
+      ctx.fillStyle='#ffe600';
+      ctx.shadowColor='#ffe600'; ctx.shadowBlur=10;
+      ctx.font='bold 12px system-ui'; ctx.textAlign='center';
       ctx.fillText('TARGET ▶▶▶', VW*0.75+camX, GROUND_Y-16);
       ctx.restore();
     }
@@ -422,7 +491,6 @@
     ctx.lineWidth=5;
     ctx.beginPath(); ctx.moveTo(fx-12,fy-14); ctx.lineTo(fx-22,fy-32); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(fx+12,fy-14); ctx.lineTo(fx+22,fy-32); ctx.stroke();
-    // Elastic bands
     if(!ball.flying&&!ball.settled){
       const bx=pulling?pullX:ball.x, by=pulling?pullY:ball.y;
       ctx.lineWidth=3; ctx.shadowColor='#ffe600'; ctx.shadowBlur=10; ctx.strokeStyle='#ffe600';
@@ -465,7 +533,6 @@
       ctx.shadowColor=flash?'#fff':color; ctx.shadowBlur=flash?28:10;
       ctx.fillStyle=flash?'#ffffff':color;
       roundRect(t.x,t.y,t.w,t.h,4); ctx.fill();
-      // Cracks
       if(ratio<1){
         ctx.strokeStyle='rgba(0,0,0,0.7)'; ctx.lineWidth=1.5;
         ctx.beginPath();
@@ -473,14 +540,12 @@
         ctx.moveTo(t.x+t.w*0.7,t.y+t.h*0.15); ctx.lineTo(t.x+t.w*0.35,t.y+t.h);
         ctx.stroke();
       }
-      // Shine
       const shine=ctx.createLinearGradient(t.x,t.y,t.x,t.y+t.h);
       shine.addColorStop(0,'rgba(255,255,255,0.3)'); shine.addColorStop(0.5,'rgba(255,255,255,0)');
       ctx.fillStyle=shine; roundRect(t.x,t.y,t.w,t.h/2,4); ctx.fill();
-      // HP pips
       if(t.maxHp>1){
         for(let i=0;i<t.maxHp;i++){
-          ctx.fillStyle=i<t.hp?color:'#33002288';
+          ctx.fillStyle=i<t.hp?color:'rgba(0,0,0,0.3)';
           ctx.beginPath(); ctx.arc(t.x+6+i*8,t.y+t.h-6,2.5,0,Math.PI*2); ctx.fill();
         }
       }
@@ -488,11 +553,10 @@
     });
   }
 
-  function drawBall(){
+  function drawBallEl(){
     if(!ball)return;
     const bx=pulling&&!ball.flying?pullX:ball.x;
     const by=pulling&&!ball.flying?pullY:ball.y;
-    // Trails
     if(ball.flying){
       trails.forEach(tr=>{
         ctx.save(); ctx.globalAlpha=tr.life*0.4;
@@ -519,32 +583,25 @@
     });
   }
 
-  function drawHUD(){
-    // Bottom hint (screen space)
-    if(running){
-      ctx.fillStyle='rgba(255,255,255,0.2)'; ctx.font='11px Courier New'; ctx.textAlign='center';
-      if(!ball.flying&&!ball.settled) ctx.fillText(pulling?'RELEASE TO FIRE!':'DRAG BALL TO AIM',VW/2,VH-8);
-      if(ball.settled) ctx.fillText('NEXT BALL...',VW/2,VH-8);
-    }
-
-    // Mini-map strip at top showing whole world
+  function drawMinimap(){
     const mmW=VW, mmH=8, mmY=0;
-    ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(0,mmY,mmW,mmH);
-    // Viewport indicator
+    ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.fillRect(0,mmY,mmW,mmH);
     const vpX=(camX/WORLD_W)*mmW, vpW=(VW/WORLD_W)*mmW;
-    ctx.fillStyle='rgba(255,0,200,0.4)'; ctx.fillRect(vpX,mmY,vpW,mmH);
-    // Sling dot
+    ctx.fillStyle='rgba(255,0,200,0.35)'; ctx.fillRect(vpX,mmY,vpW,mmH);
     ctx.fillStyle='#ff00cc'; ctx.fillRect((SLING_WX/WORLD_W)*mmW-1,mmY,3,mmH);
-    // Target dots
     ctx.fillStyle='#ffe600';
     targets.forEach(t=>{ if(t.hp>0) ctx.fillRect((t.x/WORLD_W)*mmW,mmY+2,2,mmH-4); });
-    // Ball dot
-    if(ball){
-      ctx.fillStyle='#ffffff'; ctx.fillRect((ball.x/WORLD_W)*mmW-1,mmY,3,mmH);
-    }
+    if(ball){ ctx.fillStyle='#ffffff'; ctx.fillRect((ball.x/WORLD_W)*mmW-1,mmY,3,mmH); }
   }
 
-  // ── Game Loop ────────────────────────────────────────────────
+  function drawCanvasHint(){
+    if(!running)return;
+    ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.font='11px system-ui'; ctx.textAlign='center';
+    if(!ball.flying&&!ball.settled) ctx.fillText(pulling?'Release to fire':'Drag ball to aim',VW/2,VH-10);
+    if(ball.settled) ctx.fillText('Next ball…',VW/2,VH-10);
+  }
+
+  // ── Game Loop ─────────────────────────────────────────────────
   function gameLoop(){
     if(!running)return;
     updateCamera();
@@ -571,8 +628,9 @@
         if(ballsLeft<=0){
           running=false;
           overlay.className='ov-dead';
-          ovIcon.textContent='💀'; ovTitle.textContent='OUT OF AMMO';
+          ovTitle.textContent='Out of Ammo';
           ovSub.textContent='Score: '+score; ovSub.style.display='block';
+          ovHint.textContent='Click or tap to try again';
           overlay.classList.remove('hidden');
           return;
         }
@@ -586,27 +644,22 @@
     const bonus=ballsLeft*50;
     score+=bonus; updateHUD();
     running=false;
-    if(level>=LEVELS.length){
-      overlay.className='ov-win';
-      ovIcon.textContent='🏆'; ovTitle.textContent='YOU WIN!';
-      ovSub.textContent='Final Score: '+score; ovSub.style.display='block';
-      overlay.classList.remove('hidden');
-    } else {
-      overlay.className='ov-win';
-      ovIcon.textContent='🎯'; ovTitle.textContent='LEVEL CLEAR!';
-      ovSub.textContent='+'+bonus+' BONUS!'; ovSub.style.display='block';
-      overlay.classList.remove('hidden');
-      setTimeout(()=>{
-        level++; levelEl.textContent=level;
-        initLevel();
-        overlay.classList.add('hidden');
-        running=true;
-        loopId=requestAnimationFrame(gameLoop);
-      },2000);
-    }
+    overlay.className='ov-win';
+    ovTitle.textContent='Level Clear!';
+    ovSub.textContent='+'+bonus+' bonus'; ovSub.style.display='block';
+    ovHint.textContent='';
+    overlay.classList.remove('hidden');
+    setTimeout(()=>{
+      level++; levelEl.textContent=level;
+      initLevel();
+      overlay.classList.add('hidden');
+      ovSub.style.display='none';
+      running=true;
+      loopId=requestAnimationFrame(gameLoop);
+    },2000);
   }
 
-  // ── Input ────────────────────────────────────────────────────
+  // ── Input ─────────────────────────────────────────────────────
   function getWorldPos(clientX,clientY){
     const rect=canvas.getBoundingClientRect();
     const sx=(clientX-rect.left)*(VW/rect.width);
@@ -651,13 +704,13 @@
     ball.flying=true; pulling=false;
   }
 
-  overlay.addEventListener('click',()=>{if(!running)startGame();});
+  overlay.addEventListener('click',()=>{ if(!running) startGame(); });
   canvas.addEventListener('mousedown',e=>onDown(e.clientX,e.clientY));
   canvas.addEventListener('mousemove',e=>onMove(e.clientX,e.clientY));
   canvas.addEventListener('mouseup',onUp);
   canvas.addEventListener('touchstart',e=>{e.preventDefault();onDown(e.touches[0].clientX,e.touches[0].clientY);},{passive:false});
-  canvas.addEventListener('touchmove', e=>{e.preventDefault();onMove(e.touches[0].clientX,e.touches[0].clientY);},{passive:false});
-  canvas.addEventListener('touchend', e=>{e.preventDefault();onUp();},{passive:false});
+  canvas.addEventListener('touchmove',e=>{e.preventDefault();onMove(e.touches[0].clientX,e.touches[0].clientY);},{passive:false});
+  canvas.addEventListener('touchend',e=>{e.preventDefault();onUp();},{passive:false});
 
   function roundRect(x,y,w,h,r){
     ctx.beginPath();
@@ -668,12 +721,13 @@
     ctx.closePath();
   }
 
-  // Initial preview draw
-  camX=0; score=0; level=1; ballsLeft=5; particles=[]; trails=[];
-  targets=getLevelCfg(1).targets.map(t=>({x:t.x,y:t.y,w:t.w,h:t.h,hp:t.hp,maxHp:t.hp,vx:0,vy:0,flash:0}));
+  // Initial preview
+  score=0; level=1; ballsLeft=5; particles=[]; trails=[]; camX=0;
+  targets=buildLevel(1).targets.map(t=>({x:t.x,y:t.y,w:t.w,h:t.h,hp:t.hp,maxHp:t.hp,vx:0,vy:0,flash:0}));
   ball={x:SLING_WX,y:SLING_WY,vx:0,vy:0,r:BALL_R,flying:false,settled:false};
   draw();
 })();
 </script>
+
 </body>
 </html>
