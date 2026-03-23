@@ -248,8 +248,8 @@ class Kart {
     // Turn rate proportional to speed (more grip at low speed → tighter turns)
     const tr = TURN_RATE * (0.35 + 0.65 * absSp / MAX_SPEED);
     if (this.drifting) {
-      // During drift: nose rotates fast inward, body slides outward
-      this.angle += this.driftDir * tr * 1.85 * (0.45 + 0.55 * Math.abs(this.steer));
+      // Only rotate when actively steering — no constant offset
+      this.angle += this.driftDir * tr * 1.85 * Math.abs(this.steer);
       this.driftCharge = Math.min(this.driftCharge + 0.009, 1);
     } else {
       this.angle += this.steer * tr * Math.sign(this.speed);
@@ -341,6 +341,36 @@ function aiInput(kart) {
   return { gas: true, brk: false, steer, drift: Math.abs(steer) > 0.55 };
 }
 
+// ─── Kart collision ──────────────────────────────────────────────────────────
+const KART_R = 24; // collision radius
+
+function resolveCollisions() {
+  const all = [player, ...bots];
+  for (let i = 0; i < all.length; i++) {
+    for (let j = i + 1; j < all.length; j++) {
+      const a = all[i], b = all[j];
+      const dx = b.x - a.x, dz = b.z - a.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < KART_R * 2 && dist > 0.01) {
+        // Push the two karts apart so they don't overlap
+        const nx = dx / dist, nz = dz / dist;
+        const push = (KART_R * 2 - dist) * 0.5;
+        a.x -= nx * push;  a.z -= nz * push;
+        b.x += nx * push;  b.z += nz * push;
+
+        // Velocity impulse along the collision normal
+        const relVx = a.vx - b.vx, relVz = a.vz - b.vz;
+        const dot = relVx * nx + relVz * nz;
+        if (dot > 0) { // only when approaching
+          const imp = dot * 0.65;
+          a.vx -= nx * imp;  a.vz -= nz * imp;
+          b.vx += nx * imp;  b.vz += nz * imp;
+        }
+      }
+    }
+  }
+}
+
 // ─── Update ──────────────────────────────────────────────────────────────────
 function update() {
   if (state !== 'playing') return;
@@ -359,6 +389,7 @@ function update() {
     b.update(ai.gas, ai.brk, ai.steer, ai.drift);
   });
 
+  resolveCollisions();
   updateCam(player);
 
   // Track finish order
