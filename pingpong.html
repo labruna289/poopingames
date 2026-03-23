@@ -412,6 +412,7 @@ function draw() {
   ctx.clearRect(0, 0, W, H);
   drawTunnel();
   drawAIPaddle();
+  drawReticle();
   drawTrail();
   drawBall();
   drawParticles();
@@ -477,6 +478,31 @@ function drawTunnel() {
     ctx.moveTo(c[a].sx, c[a].sy); ctx.lineTo(c[b].sx, c[b].sy);
     ctx.stroke();
   });
+
+  // Vanishing-point anchor dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,245,255,0.35)';
+  ctx.fill();
+
+  // Near-wall danger glow — grows as ball approaches
+  if (state === 'playing' && ball.vz < 0) {
+    const proximity = clamp(1 - ball.z / 480, 0, 1);
+    if (proximity > 0) {
+      const g = Math.floor(210 * (1 - proximity));
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,${g},0,${proximity * 0.75})`;
+      ctx.lineWidth   = 3 + proximity * 6;
+      ctx.shadowColor = ctx.strokeStyle;
+      ctx.shadowBlur  = 14 * proximity;
+      ctx.beginPath();
+      ctx.moveTo(c[0].sx, c[0].sy); ctx.lineTo(c[1].sx, c[1].sy);
+      ctx.lineTo(c[2].sx, c[2].sy); ctx.lineTo(c[3].sx, c[3].sy);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
 }
 
 // AI paddle at far end
@@ -499,6 +525,27 @@ function drawAIPaddle() {
   ctx.strokeStyle = '#ff006e';
   ctx.lineWidth = 2;
   ctx.stroke();
+  ctx.restore();
+}
+
+// Dashed ring on the player's end-wall showing where the ball will arrive.
+// At z = 0 the scale is 1, so screen offset == world x/y — no projection needed.
+function drawReticle() {
+  if (state !== 'playing' || ball.vz >= 0) return;
+  const t = clamp(1 - ball.z / TABLE_D, 0, 1);
+  const alpha = t * t * 0.55;
+  if (alpha < 0.015) return;
+
+  ctx.save();
+  ctx.setLineDash([5, 5]);
+  ctx.strokeStyle = `rgba(255,230,0,${alpha})`;
+  ctx.lineWidth   = 1.5;
+  ctx.shadowColor = '#ffe600';
+  ctx.shadowBlur  = 6 * t;
+  ctx.beginPath();
+  ctx.arc(cx + ball.x, cy + ball.y, 8 + t * 22, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
   ctx.restore();
 }
 
