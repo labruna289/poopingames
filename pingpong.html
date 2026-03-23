@@ -210,15 +210,23 @@ const AI_SPEED = 4.2;
 const AI_REACTION = 0.88; // 0-1, how close to perfect
 
 function update() {
+  // ── Particles always update (even on game over) ──
+  particles.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.12;
+    p.life -= 0.028;
+  });
+  particles = particles.filter(p => p.life > 0);
+
   if (state !== 'playing') return;
 
   // ── Player paddle (left) ──
   const PLAYER_SPEED = 7;
-  if (keys['w'] || keys['W'] || keys['ArrowUp'])    paddle.left.dy = -PLAYER_SPEED;
+  if (keys['w'] || keys['W'] || keys['ArrowUp'])        paddle.left.dy = -PLAYER_SPEED;
   else if (keys['s'] || keys['S'] || keys['ArrowDown']) paddle.left.dy =  PLAYER_SPEED;
   else paddle.left.dy = 0;
 
-  paddle.left.y  = clamp(paddle.left.y  + paddle.left.dy,  0, H - PADDLE_H);
+  paddle.left.y = clamp(paddle.left.y + paddle.left.dy, 0, H - PADDLE_H);
 
   // ── AI paddle (right) ──
   const aiTarget = ball.y - PADDLE_H/2 + (Math.random() - 0.5) * 20 * (1 - AI_REACTION);
@@ -260,25 +268,25 @@ function update() {
     spawnParticles(W, ball.y, '#39ff14', 22);
     checkWin() || serveBall(-1);
   }
-
-  // ── Particles ──
-  particles.forEach(p => {
-    p.x += p.vx; p.y += p.vy;
-    p.vy += 0.12;
-    p.life -= 0.028;
-  });
-  particles = particles.filter(p => p.life > 0);
 }
 
 function checkPaddleCollision(p, dir) {
-  // dir: 1 = left paddle (ball going left), -1 = right paddle
-  const hitLeft   = dir ===  1 && ball.x - BALL_R <= p.x + PADDLE_W && ball.x > p.x;
-  const hitRight  = dir === -1 && ball.x + BALL_R >= p.x             && ball.x < p.x + PADDLE_W;
-  if (!(hitLeft || hitRight)) return;
+  // dir: 1 = left paddle, -1 = right paddle
+  // Only trigger when ball is actually moving toward this paddle
+  if (dir === 1 && ball.vx >= 0) return;   // left paddle: ball must move left
+  if (dir === -1 && ball.vx <= 0) return;  // right paddle: ball must move right
+
+  // Use swept AABB: check if ball overlaps paddle zone
+  const facingX = dir === 1 ? p.x + PADDLE_W : p.x; // paddle face x
+  const hit = dir === 1
+    ? (ball.x - BALL_R <= facingX && ball.x + BALL_R > p.x)      // left paddle
+    : (ball.x + BALL_R >= facingX && ball.x - BALL_R < p.x + PADDLE_W); // right paddle
+
+  if (!hit) return;
 
   const paddleCenterY = p.y + PADDLE_H / 2;
   const relY = (ball.y - paddleCenterY) / (PADDLE_H / 2); // -1 to 1
-  if (Math.abs(relY) > 1.05) return; // miss — ball passed the paddle edge
+  if (Math.abs(relY) > 1.05) return; // miss — ball is above/below paddle
 
   // Increase speed on each hit
   rallyCount++;
@@ -289,9 +297,9 @@ function checkPaddleCollision(p, dir) {
   ball.vx = -dir * ball.speed * Math.cos(angle);
   ball.vy = ball.speed * Math.sin(angle);
 
-  // Push ball out of paddle to prevent tunneling
-  if (dir === 1)  ball.x = p.x + PADDLE_W + BALL_R + 1;
-  else            ball.x = p.x - BALL_R - 1;
+  // Eject ball from paddle face to prevent re-triggering
+  if (dir === 1)  ball.x = facingX + BALL_R + 1;
+  else            ball.x = facingX - BALL_R - 1;
 
   spawnParticles(ball.x, ball.y, '#ffe600', 10);
 }
@@ -491,13 +499,13 @@ function showOverlay(title, scoreHtml, btnLabel) {
 // ─── Loop ─────────────────────────────────────────────────────────────────────
 let loopRunning = false;
 function loop() {
-  loopRunning = true;
   update();
   draw();
-  if (state !== 'over' || particles.length > 0) {
-    requestAnimationFrame(loop);
-  } else {
+  // Keep running until game over AND all particles have faded
+  if (state === 'over' && particles.length === 0) {
     loopRunning = false;
+  } else {
+    requestAnimationFrame(loop);
   }
 }
 
