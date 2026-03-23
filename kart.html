@@ -144,7 +144,9 @@ const OFFROAD_MUL    = 0.84;    // extra friction off-road
 const TURN_RATE      = 0.047;   // rad/frame
 // Velocity lags behind heading — this IS the drift feel
 const ALIGN_NORMAL   = 0.13;    // fast alignment = responsive
-const ALIGN_DRIFT    = 0.034;   // slow alignment = slide
+const ALIGN_DRIFT    = 0.020;   // slow alignment = pronounced CTR-style slide
+const JUMP_V         = 3.5;     // initial vertical velocity on jump
+const GRAVITY        = 0.18;    // downward pull per frame
 
 const TOTAL_LAPS = 3;
 
@@ -211,10 +213,15 @@ class Kart {
     this.finished = false;
     this.rank     = 0;
 
+    // Jump state
+    this.y        = 0;    // height above ground
+    this.vy       = 0;    // vertical velocity
+    this.prevJump = false;
+
     this.color = color;
   }
 
-  update(gas, brk, steerIn, driftBtn) {
+  update(gas, brk, steerIn, driftBtn, jumpBtn) {
     if (this.finished) { this.speed *= 0.92; return; }
 
     // ── Speed ──
@@ -248,12 +255,23 @@ class Kart {
     // Turn rate proportional to speed (more grip at low speed → tighter turns)
     const tr = TURN_RATE * (0.35 + 0.65 * absSp / MAX_SPEED);
     if (this.drifting) {
-      // Only rotate when actively steering — no constant offset
-      this.angle += this.driftDir * tr * 1.85 * Math.abs(this.steer);
+      // CTR-style: always arc in drift direction; steering adjusts tightness.
+      // steer in drift dir → tight arc; counter-steer → wide/straight arc.
+      const steerFactor = Math.max(0, 0.3 + 0.7 * (this.driftDir * this.steer));
+      this.angle += this.driftDir * tr * 2.0 * steerFactor;
       this.driftCharge = Math.min(this.driftCharge + 0.009, 1);
     } else {
       this.angle += this.steer * tr * Math.sign(this.speed);
     }
+
+    // ── Jump ──
+    if (jumpBtn && !this.prevJump && this.y <= 0.1) {
+      this.vy = JUMP_V;
+    }
+    this.prevJump = jumpBtn;
+    this.vy -= GRAVITY;
+    this.y   = Math.max(0, this.y + this.vy);
+    if (this.y <= 0) this.vy = 0;
 
     // ── Velocity lags heading — this creates the slide feel ──
     // In CTR, the kart "goes where you point it" in normal mode but slides in drift.
@@ -381,18 +399,19 @@ function update() {
   const brk   = keys['ArrowDown']  || keys['s'] || keys['S'];
   const left  = keys['ArrowLeft']  || keys['a'] || keys['A'];
   const right = keys['ArrowRight'] || keys['d'] || keys['D'];
-  const drift = keys[' '] || keys['Shift'];
+  const drift = keys['Shift'];
+  const jump  = keys[' '];
   const steer = (right ? 1 : 0) - (left ? 1 : 0);
 
-  player.update(gas, brk, steer, drift);
+  player.update(gas, brk, steer, drift, jump);
   bots.forEach(b => {
     const ai = aiInput(b);
-    b.update(ai.gas, ai.brk, ai.steer, ai.drift);
+    b.update(ai.gas, ai.brk, ai.steer, ai.drift, false);
   });
 
   resolveCollisions();
-  // Drift sparks for every drifting kart
-  [player, ...bots].forEach(k => { if (k.drifting) spawnDriftSparks(k); });
+  // Drift sparks only when on ground
+  [player, ...bots].forEach(k => { if (k.drifting && k.y <= 0.1) spawnDriftSparks(k); });
   updateParticles();
   updateCam(player);
 
@@ -469,7 +488,7 @@ function draw() {
   // Draw karts back-to-front
   const allKarts = [player, ...bots];
   allKarts
-    .map(k => ({ k, p: project(k.x, 0, k.z) }))
+    .map(k => ({ k, p: project(k.x, k.y, k.z) }))
     .sort((a, b) => (b.p?.depth ?? 0) - (a.p?.depth ?? 0))
     .forEach(({ k }) => drawKart(k));
   drawParticles();
@@ -544,8 +563,8 @@ function drawKart(kart) {
   const lean = -kart.steer * 0.07 + (kart.drifting ? -kart.driftDir * 0.1 : 0);
 
   function wp(lx, ly, lz) {
-    // Lean: tilt around Z — left side rises/falls
-    const leanedY = ly + lean * lx;
+    // Lean: tilt around Z — left side rises/falls; kart.y lifts on jump
+    const leanedY = ly + kart.y + lean * lx;
     return project(
       kart.x + ca * lx + sa * lz,
       leanedY,
