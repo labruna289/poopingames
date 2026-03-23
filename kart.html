@@ -218,6 +218,9 @@ class Kart {
     this.vy       = 0;    // vertical velocity
     this.prevJump = false;
 
+    // Difficulty knob — reduce for easier bots (1.0 = full speed)
+    this.speedMul = 1.0;
+
     this.color = color;
   }
 
@@ -225,7 +228,7 @@ class Kart {
     if (this.finished) { this.speed *= 0.92; return; }
 
     // ── Speed ──
-    const maxNow = this.boosting > 0 ? BOOST_SPEED : MAX_SPEED;
+    const maxNow = (this.boosting > 0 ? BOOST_SPEED : MAX_SPEED) * this.speedMul;
     if (this.boosting > 0) this.boosting--;
 
     if (gas)      this.speed = Math.min(this.speed + ACCEL, maxNow);
@@ -331,8 +334,8 @@ function startGame() {
   overlay.classList.add('hidden');
   player = new Kart(0,  0, '#00f5ff');
   bots   = [
-    new Kart(N - 2, -1, '#ff006e'),
-    new Kart(N - 4,  1, '#ffe600'),
+    new Kart(0, -1, '#ff006e'),
+    new Kart(0,  1, '#ffe600'),
   ];
   frame = 0;
   finishOrder = [];
