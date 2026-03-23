@@ -304,7 +304,7 @@ document.addEventListener('keyup', e => keys[e.key] = false);
 
 // ─── Game state ───────────────────────────────────────────────────────────────
 let state = 'idle';
-let player, bots, frame, finishOrder;
+let player, bots, frame, finishOrder, particles;
 let loopRunning = false;
 
 startBtn.addEventListener('click', startGame);
@@ -318,6 +318,7 @@ function startGame() {
   ];
   frame = 0;
   finishOrder = [];
+  particles   = [];
 
   // Snap camera to starting position
   cam.x   = player.x - Math.sin(player.angle) * CAM_BACK;
@@ -390,6 +391,9 @@ function update() {
   });
 
   resolveCollisions();
+  // Drift sparks for every drifting kart
+  [player, ...bots].forEach(k => { if (k.drifting) spawnDriftSparks(k); });
+  updateParticles();
   updateCam(player);
 
   // Track finish order
@@ -409,6 +413,54 @@ function update() {
   }
 }
 
+// ─── Drift sparks ─────────────────────────────────────────────────────────────
+function spawnDriftSparks(kart) {
+  const ca = Math.cos(kart.angle), sa = Math.sin(kart.angle);
+  // Spawn from each rear wheel (local x = ±hw, local z = -hl = rear)
+  for (const lx of [-18, 18]) {
+    const wx = kart.x + ca * lx + sa * -24;
+    const wz = kart.z - sa * lx + ca * -24;
+    const p  = project(wx, 2, wz);
+    if (!p) continue;
+    const col = kart.driftCharge > 0.5 ? '#ffe600' : '#ff6600';
+    for (let i = 0; i < 2; i++) {
+      particles.push({
+        x: p.sx + (Math.random() - 0.5) * 5,
+        y: p.sy + (Math.random() - 0.5) * 3,
+        vx: (Math.random() - 0.5) * 2.5,
+        vy: -0.4 - Math.random() * 1.2,
+        life: 1.0,
+        color: col,
+        r: 2 + Math.random() * 2,
+      });
+    }
+  }
+}
+
+function updateParticles() {
+  particles.forEach(p => {
+    p.x   += p.vx;
+    p.y   += p.vy;
+    p.vy  += 0.06;
+    p.life -= 0.06;
+  });
+  particles = particles.filter(p => p.life > 0);
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.life * 0.9;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur  = 6;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
 // ─── Draw ─────────────────────────────────────────────────────────────────────
 function draw() {
   ctx.clearRect(0, 0, W, H);
@@ -420,6 +472,7 @@ function draw() {
     .map(k => ({ k, p: project(k.x, 0, k.z) }))
     .sort((a, b) => (b.p?.depth ?? 0) - (a.p?.depth ?? 0))
     .forEach(({ k }) => drawKart(k));
+  drawParticles();
   drawHUD();
 }
 
