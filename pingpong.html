@@ -294,7 +294,7 @@ function checkPaddleCollision(p, dir) {
 
   const maxAngle = 65 * Math.PI / 180;
   const angle = relY * maxAngle;
-  ball.vx = -dir * ball.speed * Math.cos(angle);
+  ball.vx = dir * ball.speed * Math.cos(angle);
   ball.vy = ball.speed * Math.sin(angle);
 
   // Eject ball from paddle face to prevent re-triggering
