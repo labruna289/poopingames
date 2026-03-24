@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kart Race — Poopi Games</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #000;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: 44px;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; padding: 0 20px; gap: 20px;
+  }
+  .nav-back {
+    font-size: 0.8rem; color: #00f5ff; text-decoration: none;
+    display: flex; align-items: center; gap: 5px; transition: opacity 0.2s;
+  }
+  .nav-back:hover { opacity: 0.7; }
+  .nav-title { font-size: 0.9rem; font-weight: 600; }
+  #game-wrapper {
+    position: fixed; inset: 44px 0 0 0;
+    display: flex; align-items: center; justify-content: center;
+    background: #000;
+  }
+  canvas { display: block; cursor: none; }
+  #overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.82); backdrop-filter: blur(8px);
+    gap: 14px; z-index: 10;
+  }
+  #overlay.hidden { display: none; }
+  .ov-eyebrow { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #ffe600; }
+  .ov-title { font-size: clamp(2rem,6vw,3.5rem); font-weight: 700; letter-spacing: -0.03em; text-shadow: 0 0 40px #ffe600; }
+  .ov-sub { font-size: 0.9rem; color: rgba(255,255,255,0.5); text-align: center; max-width: 360px; line-height: 1.55; }
+  .btn {
+    margin-top: 6px; padding: 13px 36px;
+    background: #ffe600; color: #000;
+    font-size: 0.95rem; font-weight: 700; border: none; border-radius: 100px;
+    cursor: pointer; box-shadow: 0 0 24px #ffe600;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .btn:hover { transform: scale(1.04); box-shadow: 0 0 40px #ffe600; }
+  .score-result { font-size: 1.1rem; color: rgba(255,255,255,0.7); }
+  .score-result span { color: #fff; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-back" href="index.html">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M9 2L4 7l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Games
+  </a>
+  <span class="nav-title">Kart Race</span>
+</nav>
+
+<div id="game-wrapper">
+  <canvas id="c"></canvas>
+  <div id="overlay">
+    <p class="ov-eyebrow">Arcade Racer</p>
+    <h1 class="ov-title">Kart Race</h1>
+    <p class="ov-sub">
+      <strong>Arrows / WASD</strong> to drive &nbsp;·&nbsp; <strong>Shift</strong> to drift &nbsp;·&nbsp; <strong>Space / Z</strong> to jump<br>
+      Hit a <strong>ramp</strong> to launch — hold <strong>X</strong> in the air to <strong>glide</strong>.<br>
+      Drift and release for a <strong>boost</strong>. First to cross the finish line wins.
+    </p>
+    <button class="btn" id="start-btn">Race!</button>
+  </div>
+</div>
+
+<script>
+const canvas  = document.getElementById('c');
+const ctx     = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('start-btn');
+
+const W = 900, H = 600;
+function resize() {
+  const wrap = document.getElementById('game-wrapper');
+  const s = Math.min(wrap.clientWidth / W, wrap.clientHeight / H, 1);
+  canvas.style.width  = W * s + 'px';
+  canvas.style.height = H * s + 'px';
+  canvas.width  = W;
+  canvas.height = H;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── Camera / projection constants ───────────────────────────────────────────
+const FOCAL      = 300;   // perspective focal length
+const CAM_BACK   = 105;   // distance behind kart
+const CAM_UP     = 50;    // camera height above ground
+const CAM_PITCH  = 0.20;  // tilt down (rad)
+const CAM_LERP   = 0.10;  // how quickly camera follows
+
+// ─── Track ───────────────────────────────────────────────────────────────────
+const N      = 144;    // number of segments
+const ROAD_W = 720;    // road half-width (track is 1440 units wide)
+
+// Straight drag-race track: segments march forward in +Z.
+const SEG_STEP = 68;   // world units between segments
+const track = [];
+for (let i = 0; i < N; i++)
+  track.push({ x: 0, z: i * SEG_STEP });
+// Straight track: tangent is always +Z, left-normal is -X
+for (let i = 0; i < N; i++) {
+  Object.assign(track[i], {
+    tx: 0, tz: 1, nx: -1, nz: 0,
+    lx: -ROAD_W, lz: track[i].z,
+    rx:  ROAD_W, rz: track[i].z,
+  });
+}
+
+// ─── Ramps ───────────────────────────────────────────────────────────────────
+// Each ramp sits on a track segment: kart driving over it gets launched upward.
+// Two on the straights (easy to hit), two at the turn apexes.
+const RAMP_SEGS = [9, 27, 45, 63, 81, 99, 117, 135];  // segment indices
+const RAMP_LEN  = 55;                        // depth along track direction (world units)
+const RAMP_PEAK = 28;                        // visual height at the top edge
+
+const ramps = RAMP_SEGS.map(si => {
+  const s = track[si % N];
+  return {
+    // Base edge (wide, on road surface)
+    bx: s.x - s.tx * RAMP_LEN * 0.5,
+    bz: s.z - s.tz * RAMP_LEN * 0.5,
+    // Top edge (narrow, raised)
+    tx2: s.x + s.tx * RAMP_LEN * 0.5,
+    tz2: s.z + s.tz * RAMP_LEN * 0.5,
+    nx: s.nx, nz: s.nz,  // lateral normal (for width)
+    tx: s.tx, tz: s.tz,  // forward tangent
+    cx: s.x,  cz: s.z,   // centre for collision check
+  };
+});
+
+function onRamp(kart) {
+  for (const r of ramps) {
+    const dx = kart.x - r.cx, dz = kart.z - r.cz;
+    const along  = dx * r.tx + dz * r.tz;   // projection along ramp direction
+    const across = dx * r.nx + dz * r.nz;   // projection across ramp width
+    if (Math.abs(along) < RAMP_LEN * 0.55 && Math.abs(across) < ROAD_W * 0.55) return true;
+  }
+  return false;
+}
+
+// ─── Mountain tile (baked once, blitted each frame) ──────────────────────────
+const MTN_TILE_W = 2200;   // > 2×W so two copies always span the screen
+const MTN_TILE_H = 140;
+const mtnTile = (() => {
+  const oc  = document.createElement('canvas');
+  oc.width  = MTN_TILE_W;
+  oc.height = MTN_TILE_H;
+  const octx = oc.getContext('2d');
+
+  function layer(seed, hScale, base, color) {
+    octx.beginPath();
+    octx.moveTo(0, MTN_TILE_H);
+    for (let xi = 0; xi <= MTN_TILE_W; xi += 14) {
+      const t = xi / MTN_TILE_W;
+      const h = base
+        + Math.sin(t * Math.PI * (5  + seed)) * hScale * 0.55
+        + Math.sin(t * Math.PI * (11 + seed)) * hScale * 0.30
+        + Math.sin(t * Math.PI * (23 + seed)) * hScale * 0.15;
+      octx.lineTo(xi, MTN_TILE_H - h);
+    }
+    octx.lineTo(MTN_TILE_W, MTN_TILE_H);
+    octx.closePath();
+    octx.fillStyle = color;
+    octx.fill();
+  }
+
+  layer(1, 72, 30, '#2e2040'); // far  — blue-purple
+  layer(3, 52, 18, '#4a3828'); // mid  — dusty grey-brown
+  layer(7, 32, 10, '#2e2018'); // near — dark ridge
+  return oc;
+})();
+
+// ─── Physics constants ───────────────────────────────────────────────────────
+const MAX_SPEED      = 9.5;
+const BOOST_SPEED    = 14.5;
+const ACCEL          = 0.18;
+const BRAKE_FORCE    = 0.30;
+const COAST          = 0.985;   // speed decay when not pressing gas/brake
+const FRICTION       = 0.968;   // per-frame speed multiplier
+const OFFROAD_MUL    = 0.94;    // loose dirt is only mildly slower — no hard boundary
+const TURN_RATE      = 0.047;   // rad/frame
+// Velocity lags behind heading — this IS the drift feel
+const ALIGN_NORMAL   = 0.13;    // fast alignment = responsive
+const ALIGN_DRIFT    = 0.020;   // slow alignment = pronounced CTR-style slide
+const JUMP_V         = 3.5;     // initial vertical velocity on jump
+const RAMP_V         = JUMP_V * Math.SQRT2; // 2× jump height (height ∝ v²)
+const GRAVITY        = 0.18;    // downward pull per frame
+const GLIDE_GRAVITY  = GRAVITY / 20;        // 20× gravity reduction while gliding
+
+// Drag race — first to reach the finish line wins (no laps)
+
+// ─── Camera state ────────────────────────────────────────────────────────────
+const cam = { x: 0, y: CAM_UP, z: 0, yaw: 0 };
+
+const cosPitch = Math.cos(CAM_PITCH);
+const sinPitch = Math.sin(CAM_PITCH);
+
+function updateCam(kart) {
+  // Target: CAM_BACK units behind kart, CAM_UP above ground
+  const tx = kart.x - Math.sin(kart.angle) * CAM_BACK;
+  const tz = kart.z - Math.cos(kart.angle) * CAM_BACK;
+  cam.x += (tx - cam.x) * CAM_LERP;
+  cam.z += (tz - cam.z) * CAM_LERP;
+  cam.y += (CAM_UP + kart.y - cam.y) * 0.18; // faster vertical tracking so ramp launches feel snappy
+  cam.yaw = lerpAngle(cam.yaw, kart.angle, CAM_LERP);
+}
+
+// ─── 3-D projection ──────────────────────────────────────────────────────────
+// World axes: X=right, Y=up, Z=forward.  Kart at y=0.
+function project(wx, wy, wz) {
+  // Translate to camera-relative
+  let dx = wx - cam.x;
+  let dy = cam.y - wy;   // positive = below camera (screen Y goes down)
+  let dz = wz - cam.z;
+
+  // Rotate by -cam.yaw around Y (align camera facing with +Z)
+  const cy = Math.cos(-cam.yaw), sy = Math.sin(-cam.yaw);
+  const rx = cy * dx + sy * dz;
+  const rz = -sy * dx + cy * dz;
+
+  // Rotate by cam.pitch around X (tilt camera down)
+  const finalY = cosPitch * dy - sinPitch * rz;
+  const finalZ = sinPitch * dy + cosPitch * rz;
+
+  if (finalZ < 0.5) return null;
+  const s = FOCAL / finalZ;
+  return { sx: W / 2 + rx * s, sy: H / 2 + finalY * s, s, depth: finalZ };
+}
+
+// ─── Kart class ───────────────────────────────────────────────────────────────
+class Kart {
+  constructor(segIdx, laneOffset, color, scale = 1) {
+    const seg = track[segIdx % N];
+    this.x     = seg.x + seg.nx * laneOffset * 22;
+    this.z     = seg.z + seg.nz * laneOffset * 22;
+    this.angle = Math.atan2(seg.tx, seg.tz); // heading (0 = +Z world)
+    this.speed = 0;
+    this.vx    = 0;   // actual velocity X
+    this.vz    = 0;   // actual velocity Z
+    this.steer = 0;   // smoothed steer input (-1..1)
+
+    // Drift state
+    this.drifting    = false;
+    this.driftDir    = 1;
+    this.driftCharge = 0;   // 0..1
+    this.boosting    = 0;   // frames remaining
+
+    // Combat state
+    this.hp              = 10;
+    this.hitFlash        = 0;   // frames of white-flash when hit
+    this.shootCooldown   = 0;   // frames until next shot allowed
+    this.respawnTimer    = 0;   // >0 = dead / respawning
+    this.wallHitCooldown = 0;   // frames before wall can deal damage again
+
+    // Race state
+    this.seg      = segIdx % N;
+    this.prevSeg  = segIdx % N;
+    this.lap      = 0;
+    this.finished = false;
+    this.rank     = 0;
+
+    // Jump / glide / dive state
+    this.y         = 0;
+    this.vy        = 0;
+    this.prevJump  = false;
+    this.gliding   = false;
+    this.diving    = false;
+    this.pitch     = 0;     // nose-down angle (rad), animated
+    this.prevRamp  = false;
+
+    // Per-kart dimensions (scale=1 → normal, scale=2 → big kart)
+    this.hw    = 20 * scale;
+    this.hl    = 26 * scale;
+    this.kh    = 17 * scale;
+    this.kartR = KART_R * scale;
+
+    // Difficulty knob — reduce for easier bots (1.0 = full speed)
+    this.speedMul = 1.0;
+
+    this.color = color;
+  }
+
+  update(gas, brk, steerIn, driftBtn, jumpBtn, glideBtn) {
+    if (this.finished) { this.speed *= 0.92; return; }
+
+    // ── Speed ──
+    const maxNow = (this.boosting > 0 ? BOOST_SPEED : MAX_SPEED) * this.speedMul;
+    if (this.boosting > 0) this.boosting--;
+
+    if (gas)      this.speed = Math.min(this.speed + ACCEL, maxNow);
+    else if (brk) this.speed = Math.max(this.speed - BRAKE_FORCE, -MAX_SPEED * 0.3);
+    else          this.speed *= COAST;
+
+    this.speed *= FRICTION;
+    if (!onTrack(this.x, this.z)) this.speed *= OFFROAD_MUL;
+
+    // ── Steer smoothing ──
+    this.steer += (steerIn - this.steer) * 0.22;
+
+    // ── Drift start / end ──
+    const absSp = Math.abs(this.speed);
+    // Drift only starts while actively steering — prevents accidental right-side drift
+    if (driftBtn && absSp > 1.5 && !this.drifting && Math.abs(this.steer) > 0.1) {
+      this.drifting    = true;
+      this.driftDir    = this.steer > 0 ? 1 : -1;
+      this.driftCharge = 0;
+    }
+    if (!driftBtn || absSp < 0.5) {
+      if (this.drifting && this.driftCharge > 0.25) this.boosting = 50;
+      this.drifting    = false;
+      this.driftCharge = 0;
+    }
+
+    // ── Heading rotation ──
+    // Turn rate proportional to speed (more grip at low speed → tighter turns)
+    const tr = TURN_RATE * (0.35 + 0.65 * absSp / MAX_SPEED);
+    if (this.drifting) {
+      // CTR-style: always arc in drift direction; steering adjusts tightness.
+      // steer in drift dir → tight arc; counter-steer → wide/straight arc.
+      const steerFactor = Math.max(0, 0.3 + 0.7 * (this.driftDir * this.steer));
+      this.angle += this.driftDir * tr * 2.0 * steerFactor;
+      this.driftCharge = Math.min(this.driftCharge + 0.009, 1);
+    } else {
+      this.angle += this.steer * tr * Math.sign(this.speed);
+    }
+
+    // ── Ramp launch ──
+    const overRamp = onRamp(this);
+    if (overRamp && !this.prevRamp && this.y <= 0.1) {
+      this.vy = RAMP_V;
+    }
+    this.prevRamp = overRamp;
+
+    // ── Jump ──
+    if (jumpBtn && !this.prevJump && this.y <= 0.1) {
+      this.vy = JUMP_V;
+    }
+    this.prevJump = jumpBtn;
+
+    // ── Glide / dive ──
+    const inAir  = this.y > 0.5;
+    this.gliding = inAir && glideBtn;
+    this.diving  = this.gliding && brk;          // X + S = hawk dive
+    const grav   = this.diving  ? GRAVITY * 7 / 1.5  // hawk dive (reduced)
+                 : this.gliding ? GLIDE_GRAVITY   // float
+                 :                GRAVITY;
+    this.vy -= grav;
+    this.y   = Math.max(0, this.y + this.vy);
+    if (this.y <= 0) { this.vy = 0; this.gliding = false; this.diving = false; }
+
+    // Pitch nose-down while diving, recover smoothly on landing / release
+    const pitchTarget = this.diving ? 0.65 : 0;
+    this.pitch += (pitchTarget - this.pitch) * 0.14;
+    if (this.y <= 0) this.pitch = 0;
+
+    // ── Velocity lags heading — this creates the slide feel ──
+    // In CTR, the kart "goes where you point it" in normal mode but slides in drift.
+    const align = this.drifting ? ALIGN_DRIFT : ALIGN_NORMAL;
+    this.vx += (Math.sin(this.angle) * this.speed - this.vx) * align;
+    this.vz += (Math.cos(this.angle) * this.speed - this.vz) * align;
+
+    this.x += this.vx;
+    this.z += this.vz;
+
+    // ── Progress / finish ──
+    this.seg = nearestSeg(this.x, this.z);
+    if (this.seg >= N - 2) this.finished = true;
+  }
+
+  // Effective race progress (for position ranking)
+  progress() { return this.seg; }
+}
+
+// ─── Track helpers ────────────────────────────────────────────────────────────
+function nearestSeg(x, z) {
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < N; i++) {
+    const d = (x - track[i].x) ** 2 + (z - track[i].z) ** 2;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+function onTrack(x, z) {
+  const t = track[nearestSeg(x, z)];
+  return Math.abs((x - t.x) * t.nx + (z - t.z) * t.nz) < ROAD_W * 1.08;
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+const keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if ((e.key === ' ' || e.key === 'Enter') && state !== 'playing') startGame();
+  if (e.key === ' ') e.preventDefault();
+});
+document.addEventListener('keyup', e => keys[e.key] = false);
+
+// ─── Game state ───────────────────────────────────────────────────────────────
+let state = 'idle';
+let player, bots, frame, finishOrder, particles, bullets;
+let loopRunning = false;
+
+startBtn.addEventListener('click', startGame);
+
+function startGame() {
+  overlay.classList.add('hidden');
+  // All karts start at the same seg (aligned row), x set below
+  player = new Kart(1, 0, '#00f5ff');
+  bots   = [
+    new Kart(1, 0, '#ff006e'),
+    new Kart(1, 0, '#ffe600'),
+    new Kart(1, 0, '#ff6600', 2),
+    // Motorcycles — 50% narrower (scale 0.5), faster, 5 HP
+    new Kart(1, 0, '#00ff99', 0.5),
+    new Kart(1, 0, '#cc44ff', 0.5),
+    new Kart(1, 0, '#ff8800', 0.5),
+  ];
+  bots[2].speedMul = 0.72;
+  bots[3].speedMul = 1.35;  bots[3].hp = 5;
+  bots[4].speedMul = 1.35;  bots[4].hp = 5;
+  bots[5].speedMul = 1.35;  bots[5].hp = 5;
+
+  // Side-by-side grid: gap between each pair = hw of each kart (half its full width)
+  const gridOrder = [bots[0], bots[3], bots[1], player, bots[4], bots[2], bots[5]];
+  const GAP = 20; // gap = normal kart hw
+  const totalW = gridOrder.reduce((s, k) => s + k.hw * 2, 0) + GAP * (gridOrder.length - 1);
+  let gx = -totalW / 2;
+  for (const k of gridOrder) {
+    k.x = gx + k.hw;   // centre of this kart
+    gx += k.hw * 2 + GAP;
+  }
+  frame = 0;
+  finishOrder = [];
+  particles   = [];
+  bullets     = [];
+
+  // Snap camera to starting position
+  cam.x   = player.x - Math.sin(player.angle) * CAM_BACK;
+  cam.z   = player.z - Math.cos(player.angle) * CAM_BACK;
+  cam.y   = CAM_UP;
+  cam.yaw = player.angle;
+
+  state = 'playing';
+  if (!loopRunning) startLoop();
+}
+
+// ─── AI ───────────────────────────────────────────────────────────────────────
+const AI_LOOK = 7;  // segments ahead to aim at
+
+function aiInput(kart) {
+  const target = track[(kart.seg + AI_LOOK) % N];
+  const dx = target.x - kart.x, dz = target.z - kart.z;
+  const dist = Math.hypot(dx, dz);
+  // Project target onto kart's right vector
+  const steer = clamp((dx * Math.cos(kart.angle) - dz * Math.sin(kart.angle)) / dist * 2.8, -1, 1);
+  return { gas: true, brk: false, steer, drift: Math.abs(steer) > 0.55 };
+}
+
+// ─── Wall collision ───────────────────────────────────────────────────────────
+const WALL_H = 40; // visual barrier height (world units)
+
+function resolveWalls() {
+  for (const k of [player, ...bots]) {
+    if (k.respawnTimer > 0) continue;
+    const t = track[nearestSeg(k.x, k.z)];
+    const lateral = (k.x - t.x) * t.nx + (k.z - t.z) * t.nz;
+    const limit = ROAD_W - k.hw;
+    if (Math.abs(lateral) > limit) {
+      const sign = lateral > 0 ? 1 : -1;
+      const over  = Math.abs(lateral) - limit;
+      // Push back inside
+      k.x -= t.nx * sign * over;
+      k.z -= t.nz * sign * over;
+      // Reflect the normal component of velocity (bounce off wall)
+      const vDotN = k.vx * t.nx + k.vz * t.nz;
+      if (vDotN * sign > 0) {
+        k.vx   -= t.nx * vDotN * 1.8;
+        k.vz   -= t.nz * vDotN * 1.8;
+        k.speed *= 0.35;
+      }
+      // Deal 1 HP on significant impact (cooldown prevents per-frame drain)
+      if (k.wallHitCooldown <= 0 && Math.abs(vDotN) > 1.5) {
+        k.hp--;
+        k.hitFlash        = 14;
+        k.wallHitCooldown = 45; // ~0.75 s immunity window
+        spawnHitSparks(k.x, k.kh * 0.5, k.z, '#ff4400');
+        if (k.hp <= 0) {
+          spawnExplosion(k);
+          k.hp          = 10;
+          k.respawnTimer = 150;
+        }
+      }
+    }
+    if (k.wallHitCooldown > 0) k.wallHitCooldown--;
+  }
+}
+
+// ─── Kart collision ──────────────────────────────────────────────────────────
+const KART_R = 24; // collision radius
+
+function resolveCollisions() {
+  const all = [player, ...bots];
+  for (let i = 0; i < all.length; i++) {
+    for (let j = i + 1; j < all.length; j++) {
+      const a = all[i], b = all[j];
+      const dx = b.x - a.x, dz = b.z - a.z;
+      const dist = Math.hypot(dx, dz);
+      const minDist = a.kartR + b.kartR;
+      if (dist < minDist && dist > 0.01) {
+        const nx = dx / dist, nz = dz / dist;
+        const push = (minDist - dist) * 0.5;
+        a.x -= nx * push;  a.z -= nz * push;
+        b.x += nx * push;  b.z += nz * push;
+
+        // Velocity impulse along the collision normal
+        const relVx = a.vx - b.vx, relVz = a.vz - b.vz;
+        const dot = relVx * nx + relVz * nz;
+        if (dot > 0) { // only when approaching
+          const imp = dot * 0.65;
+          a.vx -= nx * imp;  a.vz -= nz * imp;
+          b.vx += nx * imp;  b.vz += nz * imp;
+        }
+      }
+    }
+  }
+}
+
+// ─── Update ──────────────────────────────────────────────────────────────────
+function update() {
+  if (state !== 'playing') return;
+  frame++;
+
+  const gas   = keys['ArrowUp']    || keys['w'] || keys['W'];
+  const brk   = keys['ArrowDown']  || keys['s'] || keys['S'];
+  const left  = keys['ArrowLeft']  || keys['a'] || keys['A'];
+  const right = keys['ArrowRight'] || keys['d'] || keys['D'];
+  const drift = keys['Shift'];
+  const jump  = keys[' '] || keys['z'] || keys['Z']; // 'z' avoids arrow-key ghosting
+  const glide  = keys['x'] || keys['X'];
+  const fire   = keys['f'] || keys['F'];
+  const steer  = (right ? 1 : 0) - (left ? 1 : 0);
+
+  // Tick combat timers for all karts
+  [player, ...bots].forEach(k => {
+    if (k.hitFlash      > 0) k.hitFlash--;
+    if (k.shootCooldown > 0) k.shootCooldown--;
+    if (k.respawnTimer  > 0) k.respawnTimer--;
+  });
+
+  if (player.respawnTimer <= 0) player.update(gas, brk, steer, drift, jump, glide);
+  if (fire) shoot(player);
+
+  bots.forEach(b => {
+    if (b.respawnTimer > 0) return;
+    const ai = aiInput(b);
+
+    // Bullet dodge: find the most threatening incoming bullet
+    let bestThreat = null, bestScore = 0;
+    for (const bl of bullets) {
+      if (bl.owner === b) continue;
+      const dx = b.x - bl.x, dz = b.z - bl.z;
+      const dist2 = dx*dx + dz*dz;
+      if (dist2 > 260*260) continue;
+      const closing = bl.vx * dx + bl.vz * dz;   // >0 = bullet heading toward b
+      if (closing <= 0) continue;
+      const score = closing / Math.sqrt(dist2);
+      if (score > bestScore) { bestScore = score; bestThreat = bl; }
+    }
+
+    let dodgeSteer = ai.steer;
+    if (bestThreat) {
+      // Lateral position of bullet relative to kart's right axis
+      const toBx = bestThreat.x - b.x, toBz = bestThreat.z - b.z;
+      const lateral = toBx * Math.cos(b.angle) - toBz * Math.sin(b.angle);
+      const dodge   = lateral > 0 ? -1 : 1;   // steer away from bullet side
+      dodgeSteer    = clamp(ai.steer * 0.25 + dodge * 0.75, -1, 1);
+    }
+
+    b.update(ai.gas, ai.brk, dodgeSteer, ai.drift, false, false);
+    // Bot shooting: fire when a target is roughly ahead and within range
+    const targets = [player, ...bots].filter(t => t !== b && t.respawnTimer <= 0);
+    for (const t of targets) {
+      const dx = t.x - b.x, dz = t.z - b.z;
+      if (dx*dx + dz*dz > 700*700) continue;
+      const ca = Math.cos(b.angle), sa = Math.sin(b.angle);
+      if (dx * sa + dz * ca > 0) {
+        const aimAt = Math.atan2(dx, dz) + (Math.random() - 0.5) * 0.25;
+        shoot(b, aimAt);
+        break;
+      }
+    }
+  });
+
+  updateBullets();
+  resolveCollisions();
+  resolveWalls();
+  [player, ...bots].forEach(k => {
+    if (k.y <= 0.1) {
+      spawnDust(k);                                       // always kick up dirt
+      if (k.drifting) spawnDriftSparks(k);               // sparks only while drifting
+    }
+  });
+  updateParticles();
+  updateCam(player);
+
+  // Track finish order
+  [player, ...bots].forEach(k => {
+    if (k.finished && !finishOrder.includes(k)) finishOrder.push(k);
+  });
+
+  if (player.finished) {
+    const place = finishOrder.indexOf(player) + 1;
+    state = 'over';
+    const secs = (frame / 60).toFixed(1);
+    showOverlay(
+      place === 1 ? 'You Win!' : `P${place} Place`,
+      `Time: <span>${secs}s</span>`,
+      'Race Again'
+    );
+  }
+}
+
+// ─── Dust (dirt kick-up from rear wheels) ─────────────────────────────────────
+// Tyre-smoke colours stored as [r,g,b] for fast gradient construction
+const DUST_COLS = [[80,80,80],[95,90,85],[70,68,66],[100,95,90]];
+
+function spawnDust(kart) {
+  if (Math.abs(kart.speed) < 1.0) return;
+  if (frame % 2 !== 0) return;           // spawn every other frame — halves count
+  const count = kart.drifting ? 2 : 1;
+  const ca = Math.cos(kart.angle), sa = Math.sin(kart.angle);
+  const rearOff = kart.hl + 2;
+  for (let i = 0; i < count; i++) {
+    const wx = kart.x - sa * rearOff + (Math.random() - 0.5) * kart.hw;
+    const wz = kart.z - ca * rearOff + (Math.random() - 0.5) * kart.hw;
+    const p  = project(wx, kart.y + 1, wz);
+    if (!p) continue;
+    particles.push({
+      x: p.sx + (Math.random() - 0.5) * 5 * p.s,
+      y: p.sy + (Math.random() - 0.5) * 3 * p.s,
+      vx: (Math.random() - 0.5) * 1.4,
+      vy: -0.25 - Math.random() * 0.7,
+      life: 0.6 + Math.random() * 0.4,
+      rgb: DUST_COLS[Math.floor(Math.random() * DUST_COLS.length)],
+      r: (3 + Math.random() * 4) * Math.max(p.s, 0.4),
+      isDust: true,
+    });
+  }
+}
+
+// ─── Drift sparks ─────────────────────────────────────────────────────────────
+function spawnDriftSparks(kart) {
+  const ca = Math.cos(kart.angle), sa = Math.sin(kart.angle);
+  // Spawn from each rear wheel (local x = ±hw, local z = -hl = rear)
+  for (const lx of [-18, 18]) {
+    const wx = kart.x + ca * lx + sa * -24;
+    const wz = kart.z - sa * lx + ca * -24;
+    const p  = project(wx, 2, wz);
+    if (!p) continue;
+    const col = kart.driftCharge > 0.5 ? '#ffe600' : '#ff6600';
+    for (let i = 0; i < 2; i++) {
+      particles.push({
+        x: p.sx + (Math.random() - 0.5) * 5,
+        y: p.sy + (Math.random() - 0.5) * 3,
+        vx: (Math.random() - 0.5) * 2.5,
+        vy: -0.4 - Math.random() * 1.2,
+        life: 1.0,
+        color: col,
+        r: 2 + Math.random() * 2,
+      });
+    }
+  }
+}
+
+// ─── Bullets ──────────────────────────────────────────────────────────────────
+const BULLET_SPEED   = 24;
+const BULLET_LIFE    = 90;
+const SHOOT_COOLDOWN = 25;
+const AIM_SPREAD     = Math.PI / 4;   // max ±45° aim offset from steer
+
+function shoot(kart, aimAngle = kart.angle + kart.steer * AIM_SPREAD) {
+  if (kart.shootCooldown > 0 || kart.respawnTimer > 0) return;
+  const ca = Math.cos(aimAngle), sa = Math.sin(aimAngle);
+  bullets.push({
+    x: kart.x + sa * (kart.hl + 6),
+    z: kart.z + ca * (kart.hl + 6),
+    y: kart.kh * 0.5,
+    vx: sa * BULLET_SPEED + kart.vx * 0.4,
+    vz: ca * BULLET_SPEED + kart.vz * 0.4,
+    owner: kart,
+    age: 0,
+    color: kart.color,
+  });
+  kart.shootCooldown = SHOOT_COOLDOWN;
+}
+
+function updateBullets() {
+  const allKarts = [player, ...bots];
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.x += b.vx;
+    b.z += b.vz;
+    b.age++;
+    let remove = b.age > BULLET_LIFE;
+    for (const k of allKarts) {
+      if (k === b.owner || k.respawnTimer > 0) continue;
+      const dx = k.x - b.x, dz = k.z - b.z;
+      if (dx*dx + dz*dz < (k.hw + 10) ** 2) {
+        k.hp       -= 1;
+        k.hitFlash  = 14;
+        spawnHitSparks(b.x, b.y, b.z, b.color);
+        if (k.hp <= 0) {
+          spawnExplosion(k);
+          k.hp          = 10;
+          k.respawnTimer = 150;
+        }
+        remove = true;
+        break;
+      }
+    }
+    if (remove) bullets.splice(i, 1);
+  }
+}
+
+function drawBullets() {
+  for (const b of bullets) {
+    const p = project(b.x, b.y, b.z);
+    if (!p || p.depth <= 0) continue;
+    const r = clamp(9 / (p.depth * 0.0025), 2, 13);
+    ctx.save();
+    ctx.shadowColor = b.color;
+    ctx.shadowBlur  = 14;
+    ctx.fillStyle   = '#fff';
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = b.color;
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, r * 0.52, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function spawnHitSparks(wx, wy, wz, color) {
+  const p = project(wx, wy, wz);
+  if (!p) return;
+  for (let i = 0; i < 8; i++) {
+    particles.push({
+      x: p.sx, y: p.sy,
+      vx: (Math.random() - 0.5) * 5,
+      vy: -1.5 - Math.random() * 2.5,
+      life: 0.7 + Math.random() * 0.5,
+      color,
+      r: 2 + Math.random() * 3,
+    });
+  }
+}
+
+function spawnExplosion(kart) {
+  const p = project(kart.x, kart.kh, kart.z);
+  if (!p) return;
+  for (let i = 0; i < 28; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 6;
+    particles.push({
+      x: p.sx + (Math.random() - 0.5) * 24,
+      y: p.sy + (Math.random() - 0.5) * 16,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 2.5,
+      life: 1.0,
+      color: Math.random() < 0.5 ? '#ff6600' : '#ffe600',
+      r: 3 + Math.random() * 6,
+    });
+  }
+}
+
+function updateParticles() {
+  particles.forEach(p => {
+    p.x   += p.vx;
+    p.y   += p.vy;
+    p.vy  += 0.06;
+    p.life -= 0.06;
+  });
+  particles = particles.filter(p => p.life > 0);
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    if (p.isDust) {
+      // Soft smoke puff — radial gradient (no ctx.filter, no save/restore)
+      const r = p.r * (1.8 - p.life * 0.8);
+      const [cr, cg, cb] = p.rgb;
+      const a = (p.life * 0.42).toFixed(2);
+      const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+      grd.addColorStop(0, `rgba(${cr},${cg},${cb},${a})`);
+      grd.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = grd;
+      ctx.fill();
+    } else {
+      // Sharp spark
+      ctx.save();
+      ctx.globalAlpha = p.life * 0.9;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur  = 6;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.fill();
+      ctx.restore();
+    }
+  });
+}
+
+// ─── Aim indicator ────────────────────────────────────────────────────────────
+function drawAimIndicator() {
+  if (!player || player.respawnTimer > 0) return;
+  const aimAngle = player.angle + player.steer * AIM_SPREAD;
+  const dist     = player.hl + 90;
+  const wx = player.x + Math.sin(aimAngle) * dist;
+  const wz = player.z + Math.cos(aimAngle) * dist;
+  const p  = project(wx, player.kh * 0.5, wz);
+  if (!p || p.depth <= 0) return;
+  const r     = clamp(7 / (p.depth * 0.0022), 2, 11);
+  const pulse = 0.55 + 0.45 * Math.sin(frame * 0.25);
+  ctx.save();
+  ctx.globalAlpha = pulse * (player.shootCooldown > 0 ? 0.35 : 0.85);
+  ctx.strokeStyle = player.color;
+  ctx.shadowColor = player.color;
+  ctx.shadowBlur  = 10;
+  ctx.lineWidth   = 1.8;
+  // Crosshair: circle + two short tick marks
+  ctx.beginPath();
+  ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(p.sx - r * 1.7, p.sy); ctx.lineTo(p.sx - r * 0.9, p.sy);
+  ctx.moveTo(p.sx + r * 0.9, p.sy); ctx.lineTo(p.sx + r * 1.7, p.sy);
+  ctx.moveTo(p.sx, p.sy - r * 1.7); ctx.lineTo(p.sx, p.sy - r * 0.9);
+  ctx.moveTo(p.sx, p.sy + r * 0.9); ctx.lineTo(p.sx, p.sy + r * 1.7);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─── Walls ────────────────────────────────────────────────────────────────────
+function drawWalls() {
+  const camSeg = nearestSeg(cam.x, cam.z);
+  const start  = (camSeg + Math.floor(N / 2)) % N;
+  for (let k = 0; k < N; k++) {
+    const i = (start + k) % N;
+    const j = (i + 1) % N;
+    const a = track[i], b = track[j];
+    const stripe = i % 2 === 0 ? '#cc2200' : '#dddddd';
+    // Left wall
+    const alb = project(a.lx, 0,      a.lz);
+    const alt = project(a.lx, WALL_H, a.lz);
+    const blb = project(b.lx, 0,      b.lz);
+    const blt = project(b.lx, WALL_H, b.lz);
+    if (alb && alt && blb && blt) {
+      ctx.beginPath();
+      ctx.moveTo(alb.sx, alb.sy); ctx.lineTo(blb.sx, blb.sy);
+      ctx.lineTo(blt.sx, blt.sy); ctx.lineTo(alt.sx, alt.sy);
+      ctx.closePath();
+      ctx.fillStyle = stripe;
+      ctx.fill();
+      ctx.strokeStyle = '#0005'; ctx.lineWidth = 0.5; ctx.stroke();
+    }
+    // Right wall
+    const arb = project(a.rx, 0,      a.rz);
+    const art = project(a.rx, WALL_H, a.rz);
+    const brb = project(b.rx, 0,      b.rz);
+    const brt = project(b.rx, WALL_H, b.rz);
+    if (arb && art && brb && brt) {
+      ctx.beginPath();
+      ctx.moveTo(arb.sx, arb.sy); ctx.lineTo(brb.sx, brb.sy);
+      ctx.lineTo(brt.sx, brt.sy); ctx.lineTo(art.sx, art.sy);
+      ctx.closePath();
+      ctx.fillStyle = stripe;
+      ctx.fill();
+      ctx.strokeStyle = '#0005'; ctx.lineWidth = 0.5; ctx.stroke();
+    }
+  }
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  drawSky();
+  drawRoad();
+  drawWalls();
+  drawRamps();
+  // Draw karts back-to-front
+  const allKarts = [player, ...bots];
+  allKarts
+    .map(k => ({ k, p: project(k.x, k.y, k.z) }))
+    .sort((a, b) => (b.p?.depth ?? 0) - (a.p?.depth ?? 0))
+    .forEach(({ k }) => drawKart(k));
+  drawParticles();
+  drawBullets();
+  drawAimIndicator();
+  drawHUD();
+}
+
+function drawRamps() {
+  for (const r of ramps) {
+    const hw = ROAD_W * 0.42;   // ramp is narrower than the full road
+    // Four corners: base-left, base-right (y=0), top-left, top-right (y=RAMP_PEAK)
+    const bl = project(r.bx + r.nx * hw, 0,          r.bz + r.nz * hw);
+    const br = project(r.bx - r.nx * hw, 0,          r.bz - r.nz * hw);
+    const tl = project(r.tx2 + r.nx * hw * 0.5, RAMP_PEAK, r.tz2 + r.nz * hw * 0.5);
+    const tr = project(r.tx2 - r.nx * hw * 0.5, RAMP_PEAK, r.tz2 - r.nz * hw * 0.5);
+    if (!bl || !br || !tl || !tr) continue;
+
+    // Ramp surface (top face) — bright yellow-orange
+    ctx.beginPath();
+    ctx.moveTo(bl.sx, bl.sy); ctx.lineTo(tl.sx, tl.sy);
+    ctx.lineTo(tr.sx, tr.sy); ctx.lineTo(br.sx, br.sy);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(bl.sx, bl.sy, tl.sx, tl.sy);
+    grad.addColorStop(0, '#c06010');
+    grad.addColorStop(1, '#ffe040');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Front face (base edge — darker)
+    ctx.beginPath();
+    ctx.moveTo(bl.sx, bl.sy); ctx.lineTo(br.sx, br.sy);
+    ctx.lineTo(br.sx, br.sy + 6); ctx.lineTo(bl.sx, bl.sy + 6);
+    ctx.closePath();
+    ctx.fillStyle = '#7a3808';
+    ctx.fill();
+
+    // Outline for readability
+    ctx.strokeStyle = '#fff8';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(bl.sx, bl.sy); ctx.lineTo(tl.sx, tl.sy);
+    ctx.lineTo(tr.sx, tr.sy); ctx.lineTo(br.sx, br.sy);
+    ctx.stroke();
+
+    // Arrow on the ramp surface pointing uphill
+    const mx = (bl.sx + br.sx) * 0.5, my = (bl.sy + br.sy) * 0.5;
+    const ax = (tl.sx + tr.sx) * 0.5, ay = (tl.sy + tr.sy) * 0.5;
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(ax, ay); ctx.stroke();
+    // arrowhead
+    const adx = ax - mx, ady = ay - my, al = Math.hypot(adx, ady) || 1;
+    const ux = adx / al, uy = ady / al;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - ux * 8 - uy * 5, ay - uy * 8 + ux * 5);
+    ctx.lineTo(ax - ux * 8 + uy * 5, ay - uy * 8 - ux * 5);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fill();
+  }
+}
+
+function drawSky() {
+  const horizonY = H * 0.56;
+
+  // Sky
+  const sky = ctx.createLinearGradient(0, 0, 0, horizonY);
+  sky.addColorStop(0,   '#0a1020');
+  sky.addColorStop(0.7, '#1a2c3a');
+  sky.addColorStop(1,   '#4a6050');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, horizonY);
+
+  // Off-road ground: dark grass
+  const gnd = ctx.createLinearGradient(0, horizonY, 0, H);
+  gnd.addColorStop(0, '#263818');
+  gnd.addColorStop(1, '#161e0c');
+  ctx.fillStyle = gnd;
+  ctx.fillRect(0, horizonY, W, H - horizonY);
+
+  // Mountains — blit pre-baked tile, shifted by camera yaw
+  const offset = ((cam.yaw / (Math.PI * 2)) * MTN_TILE_W % MTN_TILE_W + MTN_TILE_W) % MTN_TILE_W;
+  const destY  = horizonY - MTN_TILE_H;
+  const w1 = Math.min(W, MTN_TILE_W - offset);
+  ctx.drawImage(mtnTile, offset, 0, w1, MTN_TILE_H, 0, destY, w1, MTN_TILE_H);
+  if (w1 < W) {
+    ctx.drawImage(mtnTile, 0, 0, W - w1, MTN_TILE_H, w1, destY, W - w1, MTN_TILE_H);
+  }
+}
+
+function drawRoad() {
+  const camSeg = nearestSeg(cam.x, cam.z);
+  const start  = (camSeg + Math.floor(N / 2)) % N;
+
+  for (let k = 0; k < N; k++) {
+    const i = (start + k) % N;
+    const j = (i + 1) % N;
+    const a = track[i], b = track[j];
+
+    const al = project(a.lx, 0, a.lz);
+    const ar = project(a.rx, 0, a.rz);
+    const bl = project(b.lx, 0, b.lz);
+    const br = project(b.rx, 0, b.rz);
+    if (!al || !ar || !bl || !br) continue;
+
+    // Asphalt surface — dark charcoal, slight alternation for depth
+    ctx.beginPath();
+    ctx.moveTo(al.sx, al.sy); ctx.lineTo(bl.sx, bl.sy);
+    ctx.lineTo(br.sx, br.sy); ctx.lineTo(ar.sx, ar.sy);
+    ctx.closePath();
+    ctx.fillStyle = i % 2 === 0 ? '#282828' : '#232323';
+    ctx.fill();
+
+    // Dashed white centre line (every 4 segs on, 2 off)
+    if (i % 6 < 4) {
+      const ac = project(a.x, 0, a.z);
+      const bc = project(b.x, 0, b.z);
+      if (ac && bc) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = Math.max(1, ac.s * 3);
+        ctx.beginPath(); ctx.moveTo(ac.sx, ac.sy); ctx.lineTo(bc.sx, bc.sy); ctx.stroke();
+      }
+    }
+  }
+
+  // Helper: draw a checkered strip between two segment indices
+  function drawCheckers(si, sj) {
+    const a0 = track[si], a1 = track[sj];
+    const checks = 8;
+    for (let c = 0; c < checks; c++) {
+      const t0 = c / checks, t1 = (c + 1) / checks;
+      const lx0 = a0.lx + (a0.rx - a0.lx) * t0, lz0 = a0.lz;
+      const lx1 = a0.lx + (a0.rx - a0.lx) * t1, lz1 = a0.lz;
+      const rx0 = a1.lx + (a1.rx - a1.lx) * t0, rz0 = a1.lz;
+      const rx1 = a1.lx + (a1.rx - a1.lx) * t1, rz1 = a1.lz;
+      const p0 = project(lx0, 0, lz0), p1 = project(lx1, 0, lz1);
+      const p2 = project(rx1, 0, rz1), p3 = project(rx0, 0, rz0);
+      if (!p0 || !p1 || !p2 || !p3) continue;
+      ctx.beginPath();
+      ctx.moveTo(p0.sx, p0.sy); ctx.lineTo(p1.sx, p1.sy);
+      ctx.lineTo(p2.sx, p2.sy); ctx.lineTo(p3.sx, p3.sy);
+      ctx.closePath();
+      ctx.fillStyle = (c % 2 === 0) ? 'rgba(255,255,255,0.85)' : 'rgba(20,20,20,0.85)';
+      ctx.fill();
+    }
+  }
+  drawCheckers(0, 1);           // start line
+  drawCheckers(N - 2, N - 1);  // finish line
+}
+
+// Draw kart as a 3-D box.
+// Local axes: +Z = forward (kart nose), +X = right, +Y = up.
+function drawKart(kart) {
+  // Respawn: invisible for first half, blink into existence for second half
+  if (kart.respawnTimer > 75) return;
+  if (kart.respawnTimer > 0 && Math.floor(kart.respawnTimer / 6) % 2 === 0) return;
+
+  const hw = kart.hw, hl = kart.hl, h = kart.kh;
+  const ca = Math.cos(kart.angle), sa = Math.sin(kart.angle);
+
+  // Optional lean while turning / drifting
+  const lean = kart.gliding
+    ? -kart.steer * 0.55                                           // steep bank while gliding
+    : -kart.steer * 0.07 + (kart.drifting ? -kart.driftDir * 0.1 : 0);
+
+  function wp(lx, ly, lz) {
+    // Pitch (nose-down dive): rotate (ly, lz) around local X axis
+    const cp  = Math.cos(kart.pitch), sp = Math.sin(kart.pitch);
+    const ply = cp * ly - sp * lz;
+    const plz = sp * ly + cp * lz;
+    // Lean (roll): tilt around local Z
+    const leanedY = ply + kart.y + lean * lx;
+    return project(
+      kart.x + ca * lx + sa * plz,
+      leanedY,
+      kart.z - sa * lx + ca * plz
+    );
+  }
+
+  // 8 box corners (front = +lz = kart nose, back = -lz = toward camera)
+  const c = [
+    wp(-hw, h,  hl), wp(hw, h,  hl), wp(hw, h, -hl), wp(-hw, h, -hl), // 0-3 top
+    wp(-hw, 0,  hl), wp(hw, 0,  hl), wp(hw, 0, -hl), wp(-hw, 0, -hl), // 4-7 bottom
+  ];
+
+  // Faces: [corner indices, brightness factor]
+  // Draw front first (farthest from camera) then sides then back then top
+  const faces = [
+    [[4, 5, 1, 0], 0.40],  // front
+    [[4, 7, 3, 0], 0.65],  // left
+    [[5, 6, 2, 1], 0.65],  // right
+    [[7, 6, 2, 3], 1.00],  // back  (closest — brightest)
+    [[0, 1, 2, 3], 0.80],  // top
+  ];
+
+  faces.forEach(([idx, bright]) => {
+    const pts = idx.map(i => c[i]);
+    if (pts.some(p => !p)) return;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].sx, pts[0].sy);
+    pts.slice(1).forEach(p => ctx.lineTo(p.sx, p.sy));
+    ctx.closePath();
+    ctx.fillStyle = tintColor(kart.color, bright);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth   = 0.6;
+    ctx.stroke();
+  });
+
+  // Glide wings — flat planes extending sideways when planing
+  if (kart.gliding) {
+    const wingSpan = 60;  // half-span in world units
+    const wingBack =  0;  // z offset from kart centre
+    for (const side of [-1, 1]) {
+      const inner = wp(side * hw,        h * 0.6, wingBack);
+      const outer = wp(side * wingSpan,  h * 0.3, wingBack);
+      const innB  = wp(side * hw,        h * 0.5, wingBack - 12);
+      const outB  = wp(side * wingSpan,  h * 0.2, wingBack - 12);
+      if (!inner || !outer || !innB || !outB) continue;
+      ctx.beginPath();
+      ctx.moveTo(inner.sx, inner.sy); ctx.lineTo(outer.sx, outer.sy);
+      ctx.lineTo(outB.sx,  outB.sy);  ctx.lineTo(innB.sx,  innB.sy);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0,200,255,0.72)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1;
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
+  // Boost flash: cyan aura behind kart
+  if (kart.boosting > 0) {
+    const bt = kart.boosting / 50;
+    const back = project(
+      kart.x - Math.sin(kart.angle) * 30,
+      5,
+      kart.z - Math.cos(kart.angle) * 30
+    );
+    if (back) {
+      const r = back.s * 28 * bt;
+      const grd = ctx.createRadialGradient(back.sx, back.sy, 0, back.sx, back.sy, r);
+      grd.addColorStop(0, `rgba(0,245,255,${bt * 0.9})`);
+      grd.addColorStop(1, 'rgba(0,245,255,0)');
+      ctx.beginPath();
+      ctx.arc(back.sx, back.sy, r, 0, Math.PI * 2);
+      ctx.fillStyle = grd;
+      ctx.fill();
+    }
+  }
+
+  // Hit flash: white burst when struck by a bullet
+  if (kart.hitFlash > 0) {
+    const cen = wp(0, h * 0.5, 0);
+    if (cen) {
+      const sz = cen.s * hw * 3.2;
+      ctx.save();
+      ctx.globalAlpha = (kart.hitFlash / 14) * 0.55;
+      ctx.fillStyle   = '#fff';
+      ctx.fillRect(cen.sx - sz / 2, cen.sy - sz / 2, sz, sz);
+      ctx.restore();
+    }
+  }
+}
+
+function drawHUD() {
+  // Lap
+  ctx.font         = '700 18px -apple-system, Arial';
+  ctx.textBaseline = 'top';
+  ctx.textAlign    = 'left';
+  ctx.fillStyle    = '#fff';
+  // Progress to finish
+  const prog = Math.min(player.seg / (N - 2), 1);
+  ctx.fillText(`${Math.round(prog * 100)}%  to finish`, 16, 14);
+
+  // Timer
+  ctx.textAlign = 'right';
+  ctx.fillText((frame / 60).toFixed(1) + 's', W - 16, 14);
+
+  // Position
+  const all = [player, ...bots].sort((a, b) => b.progress() - a.progress());
+  const pos = all.indexOf(player) + 1;
+  const labels = ['1st', '2nd', '3rd'];
+  ctx.textAlign  = 'center';
+  ctx.font       = '700 26px -apple-system, Arial';
+  ctx.fillStyle  = pos === 1 ? '#ffe600' : '#fff';
+  ctx.shadowColor = pos === 1 ? '#ffe600' : 'transparent';
+  ctx.shadowBlur  = 12;
+  ctx.fillText(labels[pos - 1] ?? `${pos}th`, W / 2, 12);
+  ctx.shadowBlur = 0;
+
+  // Speed bar
+  const spd = Math.abs(player.speed) / MAX_SPEED;
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(16, H - 22, 120, 8);
+  ctx.fillStyle = player.boosting > 0 ? '#00f5ff' : '#ffe600';
+  ctx.fillRect(16, H - 22, 120 * Math.min(spd * (player.boosting > 0 ? BOOST_SPEED / MAX_SPEED : 1), 1), 8);
+
+  // Drift charge bar
+  if (player.drifting) {
+    const charge = player.driftCharge;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(W / 2 - 75, H - 28, 150, 10);
+    ctx.fillStyle = charge > 0.55 ? '#ffe600' : '#ff7700';
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.shadowBlur = 8;
+    ctx.fillRect(W / 2 - 75, H - 28, 150 * charge, 10);
+    ctx.shadowBlur = 0;
+    ctx.font = '600 9px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillText('BOOST CHARGE', W / 2, H - 14);
+  }
+
+  // Airborne / glide indicator
+  if (player.y > 0.5) {
+    ctx.font = '700 13px Arial';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    const diveActive = player.diving;
+    ctx.fillStyle   = diveActive ? '#ff4400' : player.gliding ? '#00f5ff' : 'rgba(255,255,255,0.5)';
+    ctx.shadowColor = diveActive ? '#ff4400' : player.gliding ? '#00f5ff' : 'transparent';
+    ctx.shadowBlur  = (diveActive || player.gliding) ? 10 : 0;
+    ctx.fillText(
+      diveActive      ? '↓ DIVING  [X+S]'
+      : player.gliding ? '〜 GLIDING  [X]'
+      :                  'AIRBORNE — hold X to glide',
+      W - 16, H - 8
+    );
+    ctx.shadowBlur = 0;
+  }
+
+  // HP bars above each kart (world-projected)
+  ctx.textBaseline = 'bottom';
+  ctx.font         = '600 9px Arial';
+  [player, ...bots].forEach(k => {
+    if (k.respawnTimer > 75) return;
+    const p = project(k.x, k.kh * 2.8, k.z);
+    if (!p || p.depth <= 0 || p.depth > 1400) return;
+    const barW = clamp(55 / (p.depth * 0.0028), 18, 55);
+    const barH = 5;
+    const bx   = p.sx - barW / 2, by = p.sy - barH / 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+    const pct = k.hp / 10;
+    ctx.fillStyle = pct > 0.5 ? '#44ff66' : pct > 0.25 ? '#ffaa00' : '#ff3333';
+    ctx.fillRect(bx, by, barW * pct, barH);
+    if (k === player) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff';
+      ctx.fillText('YOU', p.sx, by - 1);
+    }
+  });
+
+  // Shoot key hint (bottom-left, alongside speed bar)
+  ctx.font      = '600 10px Arial';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillText('[F] shoot', 16, H - 28);
+
+  // Respawn flash
+  if (player.respawnTimer > 0) {
+    ctx.fillStyle = `rgba(255,60,60,${Math.min(player.respawnTimer / 150, 1) * 0.35})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.font      = '700 32px -apple-system, Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('DESTROYED', W / 2, H / 2);
+  }
+
+  // Boost screen flash
+  if (player.boosting > 0) {
+    ctx.fillStyle = `rgba(0,245,255,${player.boosting / 50 * 0.12})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function lerpAngle(a, b, t) {
+  let d = b - a;
+  while (d >  Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
+}
+
+// Scale a hex color by a brightness factor 0..1
+function tintColor(hex, f) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgb(${Math.round(r*f)},${Math.round(g*f)},${Math.round(b*f)})`;
+}
+
+function showOverlay(title, body, btn) {
+  overlay.innerHTML = `
+    <p class="ov-eyebrow">Race finished</p>
+    <h1 class="ov-title">${title}</h1>
+    <p class="score-result">${body}</p>
+    <button class="btn" id="start-btn">${btn}</button>`;
+  overlay.classList.remove('hidden');
+  document.getElementById('start-btn').addEventListener('click', startGame);
+}
+
+// ─── Loop ─────────────────────────────────────────────────────────────────────
+function startLoop() {
+  loopRunning = true;
+  (function loop() {
+    update();
+    draw();
+    if (state !== 'over') requestAnimationFrame(loop);
+    else loopRunning = false;
+  })();
+}
+
+draw(); // idle frame
+</script>
+</body>
+</html>

@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ping Pong — Poopi Games</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #000;
+    --neon-cyan: #00f5ff;
+    --neon-pink: #ff006e;
+    --neon-yellow: #ffe600;
+    --neon-green: #39ff14;
+    --dim: rgba(255,255,255,0.08);
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  /* Nav */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: 44px;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center;
+    padding: 0 20px;
+    gap: 20px;
+  }
+  .nav-back {
+    font-size: 0.8rem; color: var(--neon-cyan); text-decoration: none;
+    display: flex; align-items: center; gap: 5px;
+    transition: opacity 0.2s;
+  }
+  .nav-back:hover { opacity: 0.7; }
+  .nav-title {
+    font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em;
+  }
+
+  /* Game wrapper */
+  #game-wrapper {
+    position: fixed; inset: 44px 0 0 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #000;
+  }
+
+  canvas {
+    display: block;
+    border: 1px solid rgba(255,255,255,0.06);
+    cursor: none;
+  }
+
+  /* Overlay (start / game over) */
+  #overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.82);
+    backdrop-filter: blur(8px);
+    gap: 16px;
+    z-index: 10;
+  }
+  #overlay.hidden { display: none; }
+
+  .overlay-eyebrow {
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--neon-cyan);
+  }
+  .overlay-title {
+    font-size: clamp(2rem, 6vw, 3.5rem);
+    font-weight: 700; letter-spacing: -0.03em;
+    text-shadow: 0 0 40px var(--neon-cyan);
+  }
+  .overlay-sub {
+    font-size: 0.9rem; color: rgba(255,255,255,0.5);
+    text-align: center; max-width: 360px; line-height: 1.5;
+  }
+  .btn {
+    margin-top: 8px;
+    padding: 13px 36px;
+    background: var(--neon-cyan);
+    color: #000;
+    font-size: 0.95rem; font-weight: 700; letter-spacing: 0.02em;
+    border: none; border-radius: 100px;
+    cursor: pointer;
+    box-shadow: 0 0 24px var(--neon-cyan);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .btn:hover { transform: scale(1.04); box-shadow: 0 0 40px var(--neon-cyan); }
+  .btn:active { transform: scale(0.97); }
+
+  .score-result {
+    font-size: 1.1rem; color: rgba(255,255,255,0.7);
+  }
+  .score-result span { color: #fff; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-back" href="index.html">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M9 2L4 7l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Games
+  </a>
+  <span class="nav-title">Ping Pong</span>
+</nav>
+
+<div id="game-wrapper">
+  <canvas id="c"></canvas>
+  <div id="overlay">
+    <p class="overlay-eyebrow">Arcade Classic</p>
+    <h1 class="overlay-title">Ping Pong</h1>
+    <p class="overlay-sub">First-person view — move your paddle <strong>up, down, left, right</strong> with WASD or arrow keys, or just <strong>move your mouse</strong>. First to 7 wins. The ball speeds up every rally.</p>
+    <button class="btn" id="start-btn">Play</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const overlay  = document.getElementById('overlay');
+const startBtn = document.getElementById('start-btn');
+
+// ─── Sizing ───────────────────────────────────────────────────────────────────
+const W = 900, H = 600;
+const cx = W / 2, cy = H / 2;
+
+function resize() {
+  const wrap = document.getElementById('game-wrapper');
+  const scale = Math.min(wrap.clientWidth / W, wrap.clientHeight / H, 1);
+  canvas.style.width  = (W * scale) + 'px';
+  canvas.style.height = (H * scale) + 'px';
+  canvas.width  = W;
+  canvas.height = H;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── 3-D world constants ──────────────────────────────────────────────────────
+// Camera sits at z = -FOCAL; player paddle is at z = 0; opponent at z = TABLE_D
+const FOCAL   = 350;   // perspective focal length (camera distance behind z = 0)
+const TW      = 210;   // tunnel half-width  (world units)
+const TH      = 155;   // tunnel half-height
+const TABLE_D = 1500;  // tunnel depth (distance to far wall / AI paddle)
+const BALL_R  = 15;    // ball radius in world units
+const PAD_W   = 65;    // paddle half-width  (world)
+const PAD_H   = 55;    // paddle half-height (world)
+
+const WIN_SCORE       = 7;
+const BASE_SPEED      = 7;
+const SPEED_INCREMENT = 0.25;
+const MAX_SPEED       = 18;
+const PLAYER_SPEED    = 5;   // keyboard movement per frame
+const AI_SPEED        = 4.2;
+const AI_REACT        = 0.065; // 0..1 — higher = smarter AI
+
+// Project a 3-D world point onto the 2-D canvas.
+function project(x, y, z) {
+  const scale = FOCAL / (FOCAL + z);
+  return { sx: cx + x * scale, sy: cy + y * scale, scale };
+}
+
+// ─── Game state ───────────────────────────────────────────────────────────────
+let state = 'idle'; // idle | playing | over
+
+const ball   = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, speed: 0 };
+const player = { x: 0, y: 0, score: 0 }; // player paddle (z = 0)
+const ai     = { x: 0, y: 0, score: 0 }; // AI paddle    (z = TABLE_D)
+
+let particles  = [];
+let trailPoints = [];
+let rallyCount = 0;
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+const keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.key === ' ' || e.key === 'Enter') tryStart();
+});
+document.addEventListener('keyup', e => keys[e.key] = false);
+
+// Mouse / touch: map screen position directly to world paddle position at z = 0
+canvas.addEventListener('mousemove', e => {
+  if (state !== 'playing') return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (W / rect.width);
+  const my = (e.clientY - rect.top)  * (H / rect.height);
+  player.x = clamp(mx - cx, -(TW - PAD_W), TW - PAD_W);
+  player.y = clamp(my - cy, -(TH - PAD_H), TH - PAD_H);
+});
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (state !== 'playing') return;
+  const rect = canvas.getBoundingClientRect();
+  const t  = e.touches[0];
+  const mx = (t.clientX - rect.left) * (W / rect.width);
+  const my = (t.clientY - rect.top)  * (H / rect.height);
+  player.x = clamp(mx - cx, -(TW - PAD_W), TW - PAD_W);
+  player.y = clamp(my - cy, -(TH - PAD_H), TH - PAD_H);
+}, { passive: false });
+
+function tryStart() {
+  if (state === 'idle' || state === 'over') startGame();
+}
+startBtn.addEventListener('click', startGame);
+
+// ─── Game init ────────────────────────────────────────────────────────────────
+function startGame() {
+  overlay.classList.add('hidden');
+  player.x = 0; player.y = 0; player.score = 0;
+  ai.x     = 0; ai.y     = 0; ai.score     = 0;
+  particles = []; trailPoints = [];
+  rallyCount = 0;
+  serveBall();
+  state = 'playing';
+  if (!loopRunning) startLoop();
+}
+
+function serveBall() {
+  ball.x = 0; ball.y = 0; ball.z = TABLE_D * 0.5;
+  ball.speed = BASE_SPEED;
+  // Serve primarily toward player (vz < 0) with small random x / y spin
+  const ha = (Math.random() * 28 - 14) * Math.PI / 180;
+  const va = (Math.random() * 20 - 10) * Math.PI / 180;
+  ball.vz = -ball.speed * 0.92;
+  ball.vx =  ball.speed * Math.sin(ha);
+  ball.vy =  ball.speed * Math.sin(va);
+  trailPoints = [];
+}
+
+// ─── Physics update ───────────────────────────────────────────────────────────
+function update() {
+  // Particles tick every frame (including after game-over so they fade out)
+  particles.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.life -= 0.03;
+  });
+  particles = particles.filter(p => p.life > 0);
+
+  if (state !== 'playing') return;
+
+  // ── Player paddle: keyboard ──
+  if (keys['a'] || keys['A'] || keys['ArrowLeft'])  player.x -= PLAYER_SPEED;
+  if (keys['d'] || keys['D'] || keys['ArrowRight']) player.x += PLAYER_SPEED;
+  if (keys['w'] || keys['W'] || keys['ArrowUp'])    player.y -= PLAYER_SPEED;
+  if (keys['s'] || keys['S'] || keys['ArrowDown'])  player.y += PLAYER_SPEED;
+  player.x = clamp(player.x, -(TW - PAD_W), TW - PAD_W);
+  player.y = clamp(player.y, -(TH - PAD_H), TH - PAD_H);
+
+  // ── AI paddle ──
+  if (ball.vz > 0) {
+    // Ball coming toward AI — track it
+    ai.x += clamp((ball.x - ai.x) * AI_REACT, -AI_SPEED, AI_SPEED);
+    ai.y += clamp((ball.y - ai.y) * AI_REACT, -AI_SPEED, AI_SPEED);
+  } else {
+    // Ball going away — drift toward center
+    ai.x += clamp(-ai.x * 0.04, -AI_SPEED * 0.4, AI_SPEED * 0.4);
+    ai.y += clamp(-ai.y * 0.04, -AI_SPEED * 0.4, AI_SPEED * 0.4);
+  }
+  ai.x = clamp(ai.x, -(TW - PAD_W), TW - PAD_W);
+  ai.y = clamp(ai.y, -(TH - PAD_H), TH - PAD_H);
+
+  // ── Ball movement ──
+  trailPoints.push({ x: ball.x, y: ball.y, z: ball.z, age: 1 });
+  if (trailPoints.length > 22) trailPoints.shift();
+  trailPoints.forEach(p => p.age *= 0.88);
+
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+  ball.z += ball.vz;
+
+  // ── Tunnel wall bounces (x) ──
+  if (ball.x - BALL_R < -TW) {
+    ball.x = -TW + BALL_R;
+    ball.vx = Math.abs(ball.vx);
+    const p = project(ball.x, ball.y, ball.z);
+    spawnParticles(p.sx, p.sy, '#00f5ff', 5);
+  }
+  if (ball.x + BALL_R > TW) {
+    ball.x = TW - BALL_R;
+    ball.vx = -Math.abs(ball.vx);
+    const p = project(ball.x, ball.y, ball.z);
+    spawnParticles(p.sx, p.sy, '#00f5ff', 5);
+  }
+
+  // ── Tunnel wall bounces (y) ──
+  if (ball.y - BALL_R < -TH) {
+    ball.y = -TH + BALL_R;
+    ball.vy = Math.abs(ball.vy);
+    const p = project(ball.x, ball.y, ball.z);
+    spawnParticles(p.sx, p.sy, '#00f5ff', 5);
+  }
+  if (ball.y + BALL_R > TH) {
+    ball.y = TH - BALL_R;
+    ball.vy = -Math.abs(ball.vy);
+    const p = project(ball.x, ball.y, ball.z);
+    spawnParticles(p.sx, p.sy, '#00f5ff', 5);
+  }
+
+  // ── Scoring: ball escaped behind player (z < 0) ──
+  if (ball.z < -BALL_R) {
+    ai.score++;
+    spawnParticles(cx + player.x, cy + player.y, '#ff006e', 28);
+    checkWin() || serveBall();
+    return;
+  }
+
+  // ── Scoring: ball escaped past AI (z > TABLE_D) ──
+  if (ball.z > TABLE_D + BALL_R) {
+    player.score++;
+    const fp = project(0, 0, TABLE_D);
+    spawnParticles(fp.sx, fp.sy, '#39ff14', 28);
+    checkWin() || serveBall();
+    return;
+  }
+
+  // ── Player paddle collision (z ≈ 0) ──
+  if (ball.vz < 0 && ball.z <= BALL_R) {
+    if (Math.abs(ball.x - player.x) <= PAD_W &&
+        Math.abs(ball.y - player.y) <= PAD_H) {
+      ball.z = BALL_R;
+      rallyCount++;
+      ball.speed = Math.min(BASE_SPEED + rallyCount * SPEED_INCREMENT, MAX_SPEED);
+
+      // Add english based on where ball hits paddle
+      const relX = (ball.x - player.x) / PAD_W;
+      const relY = (ball.y - player.y) / PAD_H;
+      ball.vx += relX * 3.5;
+      ball.vy += relY * 3.5;
+      ball.vz  = Math.abs(ball.vz); // reflect toward opponent
+
+      // Normalize total speed
+      const mag = Math.sqrt(ball.vx ** 2 + ball.vy ** 2 + ball.vz ** 2);
+      ball.vx = (ball.vx / mag) * ball.speed;
+      ball.vy = (ball.vy / mag) * ball.speed;
+      ball.vz = Math.abs((ball.vz / mag) * ball.speed);
+
+      spawnParticles(cx + player.x, cy + player.y, '#ffe600', 16);
+    }
+  }
+
+  // ── AI paddle collision (z ≈ TABLE_D) ──
+  if (ball.vz > 0 && ball.z >= TABLE_D - BALL_R) {
+    if (Math.abs(ball.x - ai.x) <= PAD_W &&
+        Math.abs(ball.y - ai.y) <= PAD_H) {
+      ball.z = TABLE_D - BALL_R;
+      rallyCount++;
+      ball.speed = Math.min(BASE_SPEED + rallyCount * SPEED_INCREMENT, MAX_SPEED);
+
+      const relX = (ball.x - ai.x) / PAD_W;
+      const relY = (ball.y - ai.y) / PAD_H;
+      ball.vx += relX * 2.5;
+      ball.vy += relY * 2.5;
+      ball.vz  = -Math.abs(ball.vz); // reflect toward player
+
+      const mag = Math.sqrt(ball.vx ** 2 + ball.vy ** 2 + ball.vz ** 2);
+      ball.vx =  (ball.vx / mag) * ball.speed;
+      ball.vy =  (ball.vy / mag) * ball.speed;
+      ball.vz = -Math.abs((ball.vz / mag) * ball.speed);
+
+      const ap = project(ai.x, ai.y, TABLE_D);
+      spawnParticles(ap.sx, ap.sy, '#ffe600', 12);
+    }
+  }
+}
+
+function checkWin() {
+  const winner = player.score >= WIN_SCORE ? 'You'
+    : ai.score >= WIN_SCORE ? 'AI' : null;
+  if (!winner) return false;
+
+  state = 'over';
+  showOverlay(
+    winner === 'You' ? 'You Win!' : 'AI Wins',
+    `Final score: <span>${player.score} – ${ai.score}</span>`,
+    'Play Again'
+  );
+  return true;
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, color, n) {
+  for (let i = 0; i < n; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 4;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 1,
+      color,
+      life: 0.7 + Math.random() * 0.3,
+      r: 2 + Math.random() * 3,
+    });
+  }
+}
+
+// ─── Draw ─────────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  drawTunnel();
+  drawAIPaddle();
+  drawReticle();
+  drawTrail();
+  drawBall();
+  drawParticles();
+  drawPlayerPaddle();
+  drawHUD();
+}
+
+// Draw the 3-D tunnel as a perspective wireframe with depth rings.
+function drawTunnel() {
+  // 8 corners of the rectangular tunnel box
+  const c = [
+    project(-TW, -TH, 0),       // 0 near top-left
+    project( TW, -TH, 0),       // 1 near top-right
+    project( TW,  TH, 0),       // 2 near bot-right
+    project(-TW,  TH, 0),       // 3 near bot-left
+    project(-TW, -TH, TABLE_D), // 4 far top-left
+    project( TW, -TH, TABLE_D), // 5 far top-right
+    project( TW,  TH, TABLE_D), // 6 far bot-right
+    project(-TW,  TH, TABLE_D), // 7 far bot-left
+  ];
+
+  // Far-end panel (AI side) — faint pink fill
+  ctx.beginPath();
+  ctx.moveTo(c[4].sx, c[4].sy); ctx.lineTo(c[5].sx, c[5].sy);
+  ctx.lineTo(c[6].sx, c[6].sy); ctx.lineTo(c[7].sx, c[7].sy);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255,0,110,0.05)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,0,110,0.55)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Four wall quads — very faint cyan fill
+  [[0,1,5,4],[3,2,6,7],[0,3,7,4],[1,2,6,5]].forEach(idx => {
+    ctx.beginPath();
+    ctx.moveTo(c[idx[0]].sx, c[idx[0]].sy);
+    idx.slice(1).forEach(i => ctx.lineTo(c[i].sx, c[i].sy));
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(0,245,255,0.01)';
+    ctx.fill();
+  });
+
+  // Depth rings (rectangular cross-sections at evenly spaced z)
+  for (let i = 1; i < 10; i++) {
+    const z = TABLE_D * i / 10;
+    const a = 0.04 + (i / 10) * 0.04;
+    const tl = project(-TW, -TH, z), tr = project(TW, -TH, z);
+    const bl = project(-TW,  TH, z), br = project(TW,  TH, z);
+    ctx.strokeStyle = `rgba(0,245,255,${a})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(tl.sx, tl.sy); ctx.lineTo(tr.sx, tr.sy);
+    ctx.lineTo(br.sx, br.sy); ctx.lineTo(bl.sx, bl.sy);
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  // Four corner lines (near → far)
+  ctx.strokeStyle = 'rgba(0,245,255,0.2)';
+  ctx.lineWidth = 1.5;
+  [[0,4],[1,5],[2,6],[3,7]].forEach(([a, b]) => {
+    ctx.beginPath();
+    ctx.moveTo(c[a].sx, c[a].sy); ctx.lineTo(c[b].sx, c[b].sy);
+    ctx.stroke();
+  });
+
+  // Vanishing-point anchor dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,245,255,0.35)';
+  ctx.fill();
+
+  // Near-wall danger glow — grows as ball approaches
+  if (state === 'playing' && ball.vz < 0) {
+    const proximity = clamp(1 - ball.z / 480, 0, 1);
+    if (proximity > 0) {
+      const g = Math.floor(210 * (1 - proximity));
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,${g},0,${proximity * 0.75})`;
+      ctx.lineWidth   = 3 + proximity * 6;
+      ctx.shadowColor = ctx.strokeStyle;
+      ctx.shadowBlur  = 14 * proximity;
+      ctx.beginPath();
+      ctx.moveTo(c[0].sx, c[0].sy); ctx.lineTo(c[1].sx, c[1].sy);
+      ctx.lineTo(c[2].sx, c[2].sy); ctx.lineTo(c[3].sx, c[3].sy);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+// AI paddle at far end
+function drawAIPaddle() {
+  const z = TABLE_D;
+  const tl = project(ai.x - PAD_W, ai.y - PAD_H, z);
+  const tr = project(ai.x + PAD_W, ai.y - PAD_H, z);
+  const br = project(ai.x + PAD_W, ai.y + PAD_H, z);
+  const bl = project(ai.x - PAD_W, ai.y + PAD_H, z);
+
+  ctx.save();
+  ctx.shadowColor = '#ff006e';
+  ctx.shadowBlur = 16;
+  ctx.beginPath();
+  ctx.moveTo(tl.sx, tl.sy); ctx.lineTo(tr.sx, tr.sy);
+  ctx.lineTo(br.sx, br.sy); ctx.lineTo(bl.sx, bl.sy);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255,0,110,0.28)';
+  ctx.fill();
+  ctx.strokeStyle = '#ff006e';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Dashed ring on the player's end-wall showing where the ball will arrive.
+// At z = 0 the scale is 1, so screen offset == world x/y — no projection needed.
+function drawReticle() {
+  if (state !== 'playing' || ball.vz >= 0) return;
+  const t = clamp(1 - ball.z / TABLE_D, 0, 1);
+  const alpha = t * t * 0.55;
+  if (alpha < 0.015) return;
+
+  ctx.save();
+  ctx.setLineDash([5, 5]);
+  ctx.strokeStyle = `rgba(255,230,0,${alpha})`;
+  ctx.lineWidth   = 1.5;
+  ctx.shadowColor = '#ffe600';
+  ctx.shadowBlur  = 6 * t;
+  ctx.beginPath();
+  ctx.arc(cx + ball.x, cy + ball.y, 8 + t * 22, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawTrail() {
+  trailPoints.forEach(pt => {
+    const p = project(pt.x, pt.y, pt.z);
+    const r = Math.max(BALL_R * p.scale * pt.age, 0.5);
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(0,245,255,${pt.age * 0.22})`;
+    ctx.fill();
+  });
+}
+
+function drawBall() {
+  const p = project(ball.x, ball.y, ball.z);
+  const r = Math.max(BALL_R * p.scale, 2.5);
+
+  ctx.save();
+  ctx.shadowColor = '#00f5ff';
+  ctx.shadowBlur  = 22 * p.scale;
+
+  const grad = ctx.createRadialGradient(
+    p.sx - r * 0.3, p.sy - r * 0.3, 0.5,
+    p.sx, p.sy, r
+  );
+  grad.addColorStop(0,   '#ffffff');
+  grad.addColorStop(0.4, '#a0f8ff');
+  grad.addColorStop(1,   '#00c8e0');
+
+  ctx.beginPath();
+  ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.restore();
+}
+
+// Player paddle lives at z = 0, so scale = 1 and screen coords = world coords + canvas center.
+function drawPlayerPaddle() {
+  const px1 = cx + player.x - PAD_W;
+  const py1 = cy + player.y - PAD_H;
+  const pw  = PAD_W * 2;
+  const ph  = PAD_H * 2;
+
+  ctx.save();
+  ctx.shadowColor = '#00f5ff';
+  ctx.shadowBlur  = 26;
+  ctx.fillStyle   = 'rgba(0,245,255,0.07)';
+  ctx.fillRect(px1, py1, pw, ph);
+  ctx.strokeStyle = '#00f5ff';
+  ctx.lineWidth   = 2.5;
+  ctx.strokeRect(px1, py1, pw, ph);
+
+  // Center crosshair
+  const mx = px1 + pw / 2, my = py1 + ph / 2;
+  ctx.shadowBlur = 10;
+  ctx.lineWidth  = 1.5;
+  ctx.beginPath(); ctx.moveTo(mx - 10, my); ctx.lineTo(mx + 10, my); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(mx, my - 10); ctx.lineTo(mx, my + 10); ctx.stroke();
+  ctx.restore();
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur  = 8;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function drawHUD() {
+  // Scores
+  ctx.font         = '700 64px -apple-system, BlinkMacSystemFont, Arial';
+  ctx.textBaseline = 'top';
+  ctx.textAlign    = 'center';
+  ctx.fillStyle    = 'rgba(0,245,255,0.18)';
+  ctx.fillText(player.score, W / 2 - 110, 18);
+  ctx.fillStyle    = 'rgba(255,0,110,0.18)';
+  ctx.fillText(ai.score, W / 2 + 110, 18);
+
+  ctx.font      = '500 11px -apple-system, Arial';
+  ctx.fillStyle = 'rgba(0,245,255,0.45)';
+  ctx.fillText('YOU', W / 4, 8);
+  ctx.fillStyle = 'rgba(255,0,110,0.45)';
+  ctx.fillText('AI', 3 * W / 4, 8);
+
+  // Depth indicator: shows how close the ball is (right edge)
+  if (state === 'playing') {
+    const depth = clamp(ball.z / TABLE_D, 0, 1);
+    const bx = W - 18, by1 = 60, barH = H - 120;
+
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    ctx.beginPath();
+    ctx.roundRect(bx - 3, by1, 6, barH, 3);
+    ctx.fill();
+
+    const col = depth < 0.35 ? '#ffe600' : depth > 0.65 ? '#ff006e' : '#00f5ff';
+    ctx.fillStyle   = col;
+    ctx.shadowColor = col;
+    ctx.shadowBlur  = 8;
+    ctx.beginPath();
+    ctx.roundRect(bx - 3, by1 + barH * depth - 5, 6, 10, 3);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Label
+    ctx.font      = '500 9px -apple-system, Arial';
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.textAlign = 'center';
+    ctx.fillText('DEPTH', bx, by1 - 10);
+  }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function showOverlay(title, scoreHtml, btnLabel) {
+  overlay.innerHTML = `
+    <p class="overlay-eyebrow">Game Over</p>
+    <h1 class="overlay-title">${title}</h1>
+    <p class="score-result">${scoreHtml}</p>
+    <button class="btn" id="start-btn">${btnLabel}</button>
+  `;
+  overlay.classList.remove('hidden');
+  document.getElementById('start-btn').addEventListener('click', startGame);
+}
+
+// ─── Loop ─────────────────────────────────────────────────────────────────────
+let loopRunning = false;
+
+function startLoop() {
+  loopRunning = true;
+  function loop() {
+    update();
+    draw();
+    if (state === 'over' && particles.length === 0) {
+      loopRunning = false;
+    } else {
+      requestAnimationFrame(loop);
+    }
+  }
+  requestAnimationFrame(loop);
+}
+
+// Draw idle frame
+draw();
+</script>
+</body>
+</html>
