@@ -110,7 +110,7 @@ const CAM_LERP   = 0.10;  // how quickly camera follows
 
 // ─── Track ───────────────────────────────────────────────────────────────────
 const N      = 72;     // number of segments
-const ROAD_W = 300;    // road half-width (track is 600 units wide)
+const ROAD_W = 480;    // road half-width (track is 960 units wide)
 
 // Straight drag-race track: segments march forward in +Z.
 const SEG_STEP = 68;   // world units between segments
@@ -265,6 +265,12 @@ class Kart {
     this.driftCharge = 0;   // 0..1
     this.boosting    = 0;   // frames remaining
 
+    // Combat state
+    this.hp            = 10;
+    this.hitFlash      = 0;   // frames of white-flash when hit
+    this.shootCooldown = 0;   // frames until next shot allowed
+    this.respawnTimer  = 0;   // >0 = dead / respawning
+
     // Race state
     this.seg      = segIdx % N;
     this.prevSeg  = segIdx % N;
@@ -410,7 +416,7 @@ document.addEventListener('keyup', e => keys[e.key] = false);
 
 // ─── Game state ───────────────────────────────────────────────────────────────
 let state = 'idle';
-let player, bots, frame, finishOrder, particles;
+let player, bots, frame, finishOrder, particles, bullets;
 let loopRunning = false;
 
 startBtn.addEventListener('click', startGame);
@@ -438,6 +444,7 @@ function startGame() {
   frame = 0;
   finishOrder = [];
   particles   = [];
+  bullets     = [];
 
   // Snap camera to starting position
   cam.x   = player.x - Math.sin(player.angle) * CAM_BACK;
@@ -502,15 +509,35 @@ function update() {
   const right = keys['ArrowRight'] || keys['d'] || keys['D'];
   const drift = keys['Shift'];
   const jump  = keys[' '] || keys['z'] || keys['Z']; // 'z' avoids arrow-key ghosting
-  const glide = keys['x'] || keys['X'];
-  const steer = (right ? 1 : 0) - (left ? 1 : 0);
+  const glide  = keys['x'] || keys['X'];
+  const fire   = keys['f'] || keys['F'];
+  const steer  = (right ? 1 : 0) - (left ? 1 : 0);
 
-  player.update(gas, brk, steer, drift, jump, glide);
-  bots.forEach(b => {
-    const ai = aiInput(b);
-    b.update(ai.gas, ai.brk, ai.steer, ai.drift, false, false);
+  // Tick combat timers for all karts
+  [player, ...bots].forEach(k => {
+    if (k.hitFlash      > 0) k.hitFlash--;
+    if (k.shootCooldown > 0) k.shootCooldown--;
+    if (k.respawnTimer  > 0) k.respawnTimer--;
   });
 
+  if (player.respawnTimer <= 0) player.update(gas, brk, steer, drift, jump, glide);
+  if (fire) shoot(player);
+
+  bots.forEach(b => {
+    if (b.respawnTimer > 0) return;
+    const ai = aiInput(b);
+    b.update(ai.gas, ai.brk, ai.steer, ai.drift, false, false);
+    // Bot shooting: fire when a target is roughly ahead and within range
+    const targets = [player, ...bots].filter(t => t !== b && t.respawnTimer <= 0);
+    for (const t of targets) {
+      const dx = t.x - b.x, dz = t.z - b.z;
+      if (dx*dx + dz*dz > 700*700) continue;
+      const ca = Math.cos(b.angle), sa = Math.sin(b.angle);
+      if (dx * sa + dz * ca > 0) { shoot(b); break; }
+    }
+  });
+
+  updateBullets();
   resolveCollisions();
   [player, ...bots].forEach(k => {
     if (k.y <= 0.1) {
@@ -590,6 +617,108 @@ function spawnDriftSparks(kart) {
   }
 }
 
+// ─── Bullets ──────────────────────────────────────────────────────────────────
+const BULLET_SPEED   = 24;
+const BULLET_LIFE    = 90;
+const SHOOT_COOLDOWN = 25;
+
+function shoot(kart) {
+  if (kart.shootCooldown > 0 || kart.respawnTimer > 0) return;
+  const ca = Math.cos(kart.angle), sa = Math.sin(kart.angle);
+  bullets.push({
+    x: kart.x + sa * (kart.hl + 6),
+    z: kart.z + ca * (kart.hl + 6),
+    y: kart.kh * 0.5,
+    vx: sa * BULLET_SPEED + kart.vx * 0.4,
+    vz: ca * BULLET_SPEED + kart.vz * 0.4,
+    owner: kart,
+    age: 0,
+    color: kart.color,
+  });
+  kart.shootCooldown = SHOOT_COOLDOWN;
+}
+
+function updateBullets() {
+  const allKarts = [player, ...bots];
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.x += b.vx;
+    b.z += b.vz;
+    b.age++;
+    let remove = b.age > BULLET_LIFE;
+    for (const k of allKarts) {
+      if (k === b.owner || k.respawnTimer > 0) continue;
+      const dx = k.x - b.x, dz = k.z - b.z;
+      if (dx*dx + dz*dz < (k.hw + 10) ** 2) {
+        k.hp       -= 1;
+        k.hitFlash  = 14;
+        spawnHitSparks(b.x, b.y, b.z, b.color);
+        if (k.hp <= 0) {
+          spawnExplosion(k);
+          k.hp          = 10;
+          k.respawnTimer = 150;
+        }
+        remove = true;
+        break;
+      }
+    }
+    if (remove) bullets.splice(i, 1);
+  }
+}
+
+function drawBullets() {
+  for (const b of bullets) {
+    const p = project(b.x, b.y, b.z);
+    if (!p || p.depth <= 0) continue;
+    const r = clamp(9 / (p.depth * 0.0025), 2, 13);
+    ctx.save();
+    ctx.shadowColor = b.color;
+    ctx.shadowBlur  = 14;
+    ctx.fillStyle   = '#fff';
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = b.color;
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, r * 0.52, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function spawnHitSparks(wx, wy, wz, color) {
+  const p = project(wx, wy, wz);
+  if (!p) return;
+  for (let i = 0; i < 8; i++) {
+    particles.push({
+      x: p.sx, y: p.sy,
+      vx: (Math.random() - 0.5) * 5,
+      vy: -1.5 - Math.random() * 2.5,
+      life: 0.7 + Math.random() * 0.5,
+      color,
+      r: 2 + Math.random() * 3,
+    });
+  }
+}
+
+function spawnExplosion(kart) {
+  const p = project(kart.x, kart.kh, kart.z);
+  if (!p) return;
+  for (let i = 0; i < 28; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 6;
+    particles.push({
+      x: p.sx + (Math.random() - 0.5) * 24,
+      y: p.sy + (Math.random() - 0.5) * 16,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 2.5,
+      life: 1.0,
+      color: Math.random() < 0.5 ? '#ff6600' : '#ffe600',
+      r: 3 + Math.random() * 6,
+    });
+  }
+}
+
 function updateParticles() {
   particles.forEach(p => {
     p.x   += p.vx;
@@ -642,6 +771,7 @@ function draw() {
     .sort((a, b) => (b.p?.depth ?? 0) - (a.p?.depth ?? 0))
     .forEach(({ k }) => drawKart(k));
   drawParticles();
+  drawBullets();
   drawHUD();
 }
 
@@ -792,6 +922,10 @@ function drawRoad() {
 // Draw kart as a 3-D box.
 // Local axes: +Z = forward (kart nose), +X = right, +Y = up.
 function drawKart(kart) {
+  // Respawn: invisible for first half, blink into existence for second half
+  if (kart.respawnTimer > 75) return;
+  if (kart.respawnTimer > 0 && Math.floor(kart.respawnTimer / 6) % 2 === 0) return;
+
   const hw = kart.hw, hl = kart.hl, h = kart.kh;
   const ca = Math.cos(kart.angle), sa = Math.sin(kart.angle);
 
@@ -885,6 +1019,19 @@ function drawKart(kart) {
       ctx.fill();
     }
   }
+
+  // Hit flash: white burst when struck by a bullet
+  if (kart.hitFlash > 0) {
+    const cen = wp(0, h * 0.5, 0);
+    if (cen) {
+      const sz = cen.s * hw * 3.2;
+      ctx.save();
+      ctx.globalAlpha = (kart.hitFlash / 14) * 0.55;
+      ctx.fillStyle   = '#fff';
+      ctx.fillRect(cen.sx - sz / 2, cen.sy - sz / 2, sz, sz);
+      ctx.restore();
+    }
+  }
 }
 
 function drawHUD() {
@@ -952,6 +1099,46 @@ function drawHUD() {
       W - 16, H - 8
     );
     ctx.shadowBlur = 0;
+  }
+
+  // HP bars above each kart (world-projected)
+  ctx.textBaseline = 'bottom';
+  ctx.font         = '600 9px Arial';
+  [player, ...bots].forEach(k => {
+    if (k.respawnTimer > 75) return;
+    const p = project(k.x, k.kh * 2.8, k.z);
+    if (!p || p.depth <= 0 || p.depth > 1400) return;
+    const barW = clamp(55 / (p.depth * 0.0028), 18, 55);
+    const barH = 5;
+    const bx   = p.sx - barW / 2, by = p.sy - barH / 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+    const pct = k.hp / 10;
+    ctx.fillStyle = pct > 0.5 ? '#44ff66' : pct > 0.25 ? '#ffaa00' : '#ff3333';
+    ctx.fillRect(bx, by, barW * pct, barH);
+    if (k === player) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff';
+      ctx.fillText('YOU', p.sx, by - 1);
+    }
+  });
+
+  // Shoot key hint (bottom-left, alongside speed bar)
+  ctx.font      = '600 10px Arial';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillText('[F] shoot', 16, H - 28);
+
+  // Respawn flash
+  if (player.respawnTimer > 0) {
+    ctx.fillStyle = `rgba(255,60,60,${Math.min(player.respawnTimer / 150, 1) * 0.35})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.font      = '700 32px -apple-system, Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('DESTROYED', W / 2, H / 2);
   }
 
   // Boost screen flash
