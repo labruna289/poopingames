@@ -272,12 +272,14 @@ class Kart {
     this.finished = false;
     this.rank     = 0;
 
-    // Jump / glide state
-    this.y         = 0;     // height above ground
-    this.vy        = 0;     // vertical velocity
+    // Jump / glide / dive state
+    this.y         = 0;
+    this.vy        = 0;
     this.prevJump  = false;
-    this.gliding   = false; // plane mode active
-    this.prevRamp  = false; // for edge-triggered ramp launch
+    this.gliding   = false;
+    this.diving    = false;
+    this.pitch     = 0;     // nose-down angle (rad), animated
+    this.prevRamp  = false;
 
     // Per-kart dimensions (scale=1 → normal, scale=3 → big kart)
     this.hw    = 20 * scale;
@@ -348,13 +350,21 @@ class Kart {
     }
     this.prevJump = jumpBtn;
 
-    // ── Glide (plane while airborne) ──
-    const inAir = this.y > 0.5;
+    // ── Glide / dive ──
+    const inAir  = this.y > 0.5;
     this.gliding = inAir && glideBtn;
-    const grav = this.gliding ? GLIDE_GRAVITY : GRAVITY;
+    this.diving  = this.gliding && brk;          // X + S = hawk dive
+    const grav   = this.diving  ? GRAVITY * 7    // plummet like a hawk
+                 : this.gliding ? GLIDE_GRAVITY   // float
+                 :                GRAVITY;
     this.vy -= grav;
     this.y   = Math.max(0, this.y + this.vy);
-    if (this.y <= 0) { this.vy = 0; this.gliding = false; }
+    if (this.y <= 0) { this.vy = 0; this.gliding = false; this.diving = false; }
+
+    // Pitch nose-down while diving, recover smoothly on landing / release
+    const pitchTarget = this.diving ? 0.65 : 0;
+    this.pitch += (pitchTarget - this.pitch) * 0.14;
+    if (this.y <= 0) this.pitch = 0;
 
     // ── Velocity lags heading — this creates the slide feel ──
     // In CTR, the kart "goes where you point it" in normal mode but slides in drift.
@@ -791,12 +801,16 @@ function drawKart(kart) {
     : -kart.steer * 0.07 + (kart.drifting ? -kart.driftDir * 0.1 : 0);
 
   function wp(lx, ly, lz) {
-    // Lean: tilt around Z — left side rises/falls; kart.y lifts on jump
-    const leanedY = ly + kart.y + lean * lx;
+    // Pitch (nose-down dive): rotate (ly, lz) around local X axis
+    const cp  = Math.cos(kart.pitch), sp = Math.sin(kart.pitch);
+    const ply = cp * ly - sp * lz;
+    const plz = sp * ly + cp * lz;
+    // Lean (roll): tilt around local Z
+    const leanedY = ply + kart.y + lean * lx;
     return project(
-      kart.x + ca * lx + sa * lz,
+      kart.x + ca * lx + sa * plz,
       leanedY,
-      kart.z - sa * lx + ca * lz
+      kart.z - sa * lx + ca * plz
     );
   }
 
@@ -927,10 +941,16 @@ function drawHUD() {
     ctx.font = '700 13px Arial';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
-    ctx.fillStyle = player.gliding ? '#00f5ff' : 'rgba(255,255,255,0.5)';
-    ctx.shadowColor = player.gliding ? '#00f5ff' : 'transparent';
-    ctx.shadowBlur  = player.gliding ? 10 : 0;
-    ctx.fillText(player.gliding ? '〜 GLIDING  [X]' : 'AIRBORNE — hold X to glide', W - 16, H - 8);
+    const diveActive = player.diving;
+    ctx.fillStyle   = diveActive ? '#ff4400' : player.gliding ? '#00f5ff' : 'rgba(255,255,255,0.5)';
+    ctx.shadowColor = diveActive ? '#ff4400' : player.gliding ? '#00f5ff' : 'transparent';
+    ctx.shadowBlur  = (diveActive || player.gliding) ? 10 : 0;
+    ctx.fillText(
+      diveActive      ? '↓ DIVING  [X+S]'
+      : player.gliding ? '〜 GLIDING  [X]'
+      :                  'AIRBORNE — hold X to glide',
+      W - 16, H - 8
+    );
     ctx.shadowBlur = 0;
   }
 
