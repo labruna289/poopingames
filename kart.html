@@ -266,10 +266,11 @@ class Kart {
     this.boosting    = 0;   // frames remaining
 
     // Combat state
-    this.hp            = 10;
-    this.hitFlash      = 0;   // frames of white-flash when hit
-    this.shootCooldown = 0;   // frames until next shot allowed
-    this.respawnTimer  = 0;   // >0 = dead / respawning
+    this.hp              = 10;
+    this.hitFlash        = 0;   // frames of white-flash when hit
+    this.shootCooldown   = 0;   // frames until next shot allowed
+    this.respawnTimer    = 0;   // >0 = dead / respawning
+    this.wallHitCooldown = 0;   // frames before wall can deal damage again
 
     // Race state
     this.seg      = segIdx % N;
@@ -468,6 +469,45 @@ function aiInput(kart) {
   return { gas: true, brk: false, steer, drift: Math.abs(steer) > 0.55 };
 }
 
+// ─── Wall collision ───────────────────────────────────────────────────────────
+const WALL_H = 40; // visual barrier height (world units)
+
+function resolveWalls() {
+  for (const k of [player, ...bots]) {
+    if (k.respawnTimer > 0) continue;
+    const t = track[nearestSeg(k.x, k.z)];
+    const lateral = (k.x - t.x) * t.nx + (k.z - t.z) * t.nz;
+    const limit = ROAD_W - k.hw;
+    if (Math.abs(lateral) > limit) {
+      const sign = lateral > 0 ? 1 : -1;
+      const over  = Math.abs(lateral) - limit;
+      // Push back inside
+      k.x -= t.nx * sign * over;
+      k.z -= t.nz * sign * over;
+      // Reflect the normal component of velocity (bounce off wall)
+      const vDotN = k.vx * t.nx + k.vz * t.nz;
+      if (vDotN * sign > 0) {
+        k.vx   -= t.nx * vDotN * 1.8;
+        k.vz   -= t.nz * vDotN * 1.8;
+        k.speed *= 0.35;
+      }
+      // Deal 1 HP on significant impact (cooldown prevents per-frame drain)
+      if (k.wallHitCooldown <= 0 && Math.abs(vDotN) > 1.5) {
+        k.hp--;
+        k.hitFlash        = 14;
+        k.wallHitCooldown = 45; // ~0.75 s immunity window
+        spawnHitSparks(k.x, k.kh * 0.5, k.z, '#ff4400');
+        if (k.hp <= 0) {
+          spawnExplosion(k);
+          k.hp          = 10;
+          k.respawnTimer = 150;
+        }
+      }
+    }
+    if (k.wallHitCooldown > 0) k.wallHitCooldown--;
+  }
+}
+
 // ─── Kart collision ──────────────────────────────────────────────────────────
 const KART_R = 24; // collision radius
 
@@ -566,6 +606,7 @@ function update() {
 
   updateBullets();
   resolveCollisions();
+  resolveWalls();
   [player, ...bots].forEach(k => {
     if (k.y <= 0.1) {
       spawnDust(k);                                       // always kick up dirt
@@ -816,11 +857,52 @@ function drawAimIndicator() {
   ctx.restore();
 }
 
+// ─── Walls ────────────────────────────────────────────────────────────────────
+function drawWalls() {
+  const camSeg = nearestSeg(cam.x, cam.z);
+  const start  = (camSeg + Math.floor(N / 2)) % N;
+  for (let k = 0; k < N; k++) {
+    const i = (start + k) % N;
+    const j = (i + 1) % N;
+    const a = track[i], b = track[j];
+    const stripe = i % 2 === 0 ? '#cc2200' : '#dddddd';
+    // Left wall
+    const alb = project(a.lx, 0,      a.lz);
+    const alt = project(a.lx, WALL_H, a.lz);
+    const blb = project(b.lx, 0,      b.lz);
+    const blt = project(b.lx, WALL_H, b.lz);
+    if (alb && alt && blb && blt) {
+      ctx.beginPath();
+      ctx.moveTo(alb.sx, alb.sy); ctx.lineTo(blb.sx, blb.sy);
+      ctx.lineTo(blt.sx, blt.sy); ctx.lineTo(alt.sx, alt.sy);
+      ctx.closePath();
+      ctx.fillStyle = stripe;
+      ctx.fill();
+      ctx.strokeStyle = '#0005'; ctx.lineWidth = 0.5; ctx.stroke();
+    }
+    // Right wall
+    const arb = project(a.rx, 0,      a.rz);
+    const art = project(a.rx, WALL_H, a.rz);
+    const brb = project(b.rx, 0,      b.rz);
+    const brt = project(b.rx, WALL_H, b.rz);
+    if (arb && art && brb && brt) {
+      ctx.beginPath();
+      ctx.moveTo(arb.sx, arb.sy); ctx.lineTo(brb.sx, brb.sy);
+      ctx.lineTo(brt.sx, brt.sy); ctx.lineTo(art.sx, art.sy);
+      ctx.closePath();
+      ctx.fillStyle = stripe;
+      ctx.fill();
+      ctx.strokeStyle = '#0005'; ctx.lineWidth = 0.5; ctx.stroke();
+    }
+  }
+}
+
 // ─── Draw ─────────────────────────────────────────────────────────────────────
 function draw() {
   ctx.clearRect(0, 0, W, H);
   drawSky();
   drawRoad();
+  drawWalls();
   drawRamps();
   // Draw karts back-to-front
   const allKarts = [player, ...bots];
