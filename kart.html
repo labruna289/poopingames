@@ -226,9 +226,9 @@ function updateCam(kart) {
   // Target: CAM_BACK units behind kart, CAM_UP above ground
   const tx = kart.x - Math.sin(kart.angle) * CAM_BACK;
   const tz = kart.z - Math.cos(kart.angle) * CAM_BACK;
-  cam.x += (tx    - cam.x) * CAM_LERP;
-  cam.z += (tz    - cam.z) * CAM_LERP;
-  cam.y += (CAM_UP - cam.y) * CAM_LERP;
+  cam.x += (tx - cam.x) * CAM_LERP;
+  cam.z += (tz - cam.z) * CAM_LERP;
+  cam.y += (CAM_UP + kart.y - cam.y) * 0.18; // faster vertical tracking so ramp launches feel snappy
   cam.yaw = lerpAngle(cam.yaw, kart.angle, CAM_LERP);
 }
 
