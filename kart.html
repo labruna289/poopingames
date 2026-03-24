@@ -75,8 +75,8 @@
     <p class="ov-eyebrow">Arcade Racer</p>
     <h1 class="ov-title">Kart Race</h1>
     <p class="ov-sub">
-      <strong>Arrows / WASD</strong> to drive &nbsp;·&nbsp; <strong>Space</strong> to drift<br>
-      Hold drift through a corner, then release for a <strong>boost</strong>.<br>
+      <strong>Arrows / WASD</strong> to drive &nbsp;·&nbsp; <strong>Shift</strong> to drift &nbsp;·&nbsp; <strong>Space / Z</strong> to jump<br>
+      Start a drift while turning, hold through the corner, release for a <strong>boost</strong>.<br>
       First to finish 3 laps wins.
     </p>
     <button class="btn" id="start-btn">Race!</button>
@@ -243,9 +243,10 @@ class Kart {
 
     // ── Drift start / end ──
     const absSp = Math.abs(this.speed);
-    if (driftBtn && absSp > 1.5 && !this.drifting) {
+    // Drift only starts while actively steering — prevents accidental right-side drift
+    if (driftBtn && absSp > 1.5 && !this.drifting && Math.abs(this.steer) > 0.1) {
       this.drifting    = true;
-      this.driftDir    = this.steer >= 0 ? 1 : -1;
+      this.driftDir    = this.steer > 0 ? 1 : -1;
       this.driftCharge = 0;
     }
     if (!driftBtn || absSp < 0.5) {
@@ -403,7 +404,7 @@ function update() {
   const left  = keys['ArrowLeft']  || keys['a'] || keys['A'];
   const right = keys['ArrowRight'] || keys['d'] || keys['D'];
   const drift = keys['Shift'];
-  const jump  = keys[' '];
+  const jump  = keys[' '] || keys['z'] || keys['Z']; // 'z' avoids arrow-key ghosting
   const steer = (right ? 1 : 0) - (left ? 1 : 0);
 
   player.update(gas, brk, steer, drift, jump);
