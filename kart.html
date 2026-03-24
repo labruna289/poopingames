@@ -775,7 +775,9 @@ function drawKart(kart) {
   const ca = Math.cos(kart.angle), sa = Math.sin(kart.angle);
 
   // Optional lean while turning / drifting
-  const lean = -kart.steer * 0.07 + (kart.drifting ? -kart.driftDir * 0.1 : 0);
+  const lean = kart.gliding
+    ? -kart.steer * 0.55                                           // steep bank while gliding
+    : -kart.steer * 0.07 + (kart.drifting ? -kart.driftDir * 0.1 : 0);
 
   function wp(lx, ly, lz) {
     // Lean: tilt around Z — left side rises/falls; kart.y lifts on jump
