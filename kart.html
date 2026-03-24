@@ -133,6 +133,38 @@ for (let i = 0; i < N; i++) {
   });
 }
 
+// ─── Mountain tile (baked once, blitted each frame) ──────────────────────────
+const MTN_TILE_W = 2200;   // > 2×W so two copies always span the screen
+const MTN_TILE_H = 140;
+const mtnTile = (() => {
+  const oc  = document.createElement('canvas');
+  oc.width  = MTN_TILE_W;
+  oc.height = MTN_TILE_H;
+  const octx = oc.getContext('2d');
+
+  function layer(seed, hScale, base, color) {
+    octx.beginPath();
+    octx.moveTo(0, MTN_TILE_H);
+    for (let xi = 0; xi <= MTN_TILE_W; xi += 14) {
+      const t = xi / MTN_TILE_W;
+      const h = base
+        + Math.sin(t * Math.PI * (5  + seed)) * hScale * 0.55
+        + Math.sin(t * Math.PI * (11 + seed)) * hScale * 0.30
+        + Math.sin(t * Math.PI * (23 + seed)) * hScale * 0.15;
+      octx.lineTo(xi, MTN_TILE_H - h);
+    }
+    octx.lineTo(MTN_TILE_W, MTN_TILE_H);
+    octx.closePath();
+    octx.fillStyle = color;
+    octx.fill();
+  }
+
+  layer(1, 72, 30, '#2e2040'); // far  — blue-purple
+  layer(3, 52, 18, '#4a3828'); // mid  — dusty grey-brown
+  layer(7, 32, 10, '#2e2018'); // near — dark ridge
+  return oc;
+})();
+
 // ─── Physics constants ───────────────────────────────────────────────────────
 const MAX_SPEED      = 9.5;
 const BOOST_SPEED    = 14.5;
@@ -441,28 +473,27 @@ function update() {
 }
 
 // ─── Dust (dirt kick-up from rear wheels) ─────────────────────────────────────
+// Tyre-smoke colours stored as [r,g,b] for fast gradient construction
+const DUST_COLS = [[80,80,80],[95,90,85],[70,68,66],[100,95,90]];
+
 function spawnDust(kart) {
-  const spd = Math.abs(kart.speed);
-  if (spd < 1.0) return;
-  const count = kart.drifting ? 3 : 2;
+  if (Math.abs(kart.speed) < 1.0) return;
+  if (frame % 2 !== 0) return;           // spawn every other frame — halves count
+  const count = kart.drifting ? 2 : 1;
   const ca = Math.cos(kart.angle), sa = Math.sin(kart.angle);
   for (let i = 0; i < count; i++) {
-    // World position: spread behind rear axle
-    const wx = kart.x - sa * 28 + (Math.random() - 0.5) * 18;
-    const wz = kart.z - ca * 28 + (Math.random() - 0.5) * 18;
+    const wx = kart.x - sa * 28 + (Math.random() - 0.5) * 16;
+    const wz = kart.z - ca * 28 + (Math.random() - 0.5) * 16;
     const p  = project(wx, kart.y + 1, wz);
     if (!p) continue;
-    const s = p.s;
-    // Warm sandy dust colours
-    const cols = ['#d4a060', '#c49050', '#b47840', '#e0b870'];
     particles.push({
-      x: p.sx + (Math.random() - 0.5) * 6 * s,
-      y: p.sy + (Math.random() - 0.5) * 4 * s,
-      vx: (Math.random() - 0.5) * 1.8,
-      vy: -0.3 - Math.random() * 0.9,
-      life: 0.7 + Math.random() * 0.5,
-      color: cols[Math.floor(Math.random() * cols.length)],
-      r: (3 + Math.random() * 5) * Math.max(s, 0.4),
+      x: p.sx + (Math.random() - 0.5) * 5 * p.s,
+      y: p.sy + (Math.random() - 0.5) * 3 * p.s,
+      vx: (Math.random() - 0.5) * 1.4,
+      vy: -0.25 - Math.random() * 0.7,
+      life: 0.6 + Math.random() * 0.4,
+      rgb: DUST_COLS[Math.floor(Math.random() * DUST_COLS.length)],
+      r: (3 + Math.random() * 4) * Math.max(p.s, 0.4),
       isDust: true,
     });
   }
@@ -504,18 +535,21 @@ function updateParticles() {
 
 function drawParticles() {
   particles.forEach(p => {
-    ctx.save();
     if (p.isDust) {
-      // Soft billowing dust cloud
-      ctx.globalAlpha = p.life * 0.38;
-      ctx.filter = 'blur(3px)';
+      // Soft smoke puff — radial gradient (no ctx.filter, no save/restore)
+      const r = p.r * (1.8 - p.life * 0.8);
+      const [cr, cg, cb] = p.rgb;
+      const a = (p.life * 0.42).toFixed(2);
+      const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+      grd.addColorStop(0, `rgba(${cr},${cg},${cb},${a})`);
+      grd.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r * (1.8 - p.life * 0.8), 0, Math.PI * 2);
-      ctx.fillStyle = p.color;
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = grd;
       ctx.fill();
-      ctx.filter = 'none';
     } else {
       // Sharp spark
+      ctx.save();
       ctx.globalAlpha = p.life * 0.9;
       ctx.shadowColor = p.color;
       ctx.shadowBlur  = 6;
@@ -523,8 +557,8 @@ function drawParticles() {
       ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
       ctx.fillStyle = p.color;
       ctx.fill();
+      ctx.restore();
     }
-    ctx.restore();
   });
 }
 
@@ -546,63 +580,29 @@ function draw() {
 function drawSky() {
   const horizonY = H * 0.56;
 
-  // Sky: deep blue-gold desert gradient
+  // Sky
   const sky = ctx.createLinearGradient(0, 0, 0, horizonY);
-  sky.addColorStop(0,   '#1a2a4a');
-  sky.addColorStop(0.6, '#3d4f2a');
-  sky.addColorStop(1,   '#b07830');
+  sky.addColorStop(0,   '#0a1020');
+  sky.addColorStop(0.7, '#1a2c3a');
+  sky.addColorStop(1,   '#4a6050');
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, W, horizonY);
 
-  // Horizon dust haze
-  const haze = ctx.createLinearGradient(0, horizonY - 40, 0, horizonY + 20);
-  haze.addColorStop(0, 'rgba(180,120,50,0)');
-  haze.addColorStop(1, 'rgba(190,130,60,0.45)');
-  ctx.fillStyle = haze;
-  ctx.fillRect(0, horizonY - 40, W, 60);
-
-  // Ground: sandy dirt
+  // Off-road ground: dark grass
   const gnd = ctx.createLinearGradient(0, horizonY, 0, H);
-  gnd.addColorStop(0, '#b07030');
-  gnd.addColorStop(1, '#7a4820');
+  gnd.addColorStop(0, '#263818');
+  gnd.addColorStop(1, '#161e0c');
   ctx.fillStyle = gnd;
   ctx.fillRect(0, horizonY, W, H - horizonY);
 
-  // ── Mountains ────────────────────────────────────────────────────────────
-  // Two layers; each tiles over [0, tileW) in yaw-space.
-  // cam.yaw goes 0..2π → we map that to a horizontal pixel offset.
-  const tileW = W * 2.5;
-
-  function drawMountainLayer(seed, heightScale, baseH, color) {
-    // Pixel offset so mountains drift with camera yaw (parallax)
-    const offset = ((cam.yaw / (Math.PI * 2)) * tileW) % tileW;
-
-    ctx.beginPath();
-    ctx.moveTo(-tileW, horizonY);
-    // Draw two tiles so there's no seam
-    for (let rep = -1; rep <= 1; rep++) {
-      const startX = rep * tileW - offset;
-      for (let xi = 0; xi <= tileW; xi += 18) {
-        const t = xi / tileW;
-        const h = baseH
-          + Math.sin(t * Math.PI * (5 + seed))  * heightScale * 0.55
-          + Math.sin(t * Math.PI * (11 + seed)) * heightScale * 0.30
-          + Math.sin(t * Math.PI * (23 + seed)) * heightScale * 0.15;
-        ctx.lineTo(startX + xi, horizonY - h);
-      }
-    }
-    ctx.lineTo(W + tileW, horizonY);
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
+  // Mountains — blit pre-baked tile, shifted by camera yaw
+  const offset = ((cam.yaw / (Math.PI * 2)) * MTN_TILE_W % MTN_TILE_W + MTN_TILE_W) % MTN_TILE_W;
+  const destY  = horizonY - MTN_TILE_H;
+  const w1 = Math.min(W, MTN_TILE_W - offset);
+  ctx.drawImage(mtnTile, offset, 0, w1, MTN_TILE_H, 0, destY, w1, MTN_TILE_H);
+  if (w1 < W) {
+    ctx.drawImage(mtnTile, 0, 0, W - w1, MTN_TILE_H, w1, destY, W - w1, MTN_TILE_H);
   }
-
-  // Far range — muted blue-purple
-  drawMountainLayer(1, 72, 30, '#2e2040');
-  // Mid range — dusty brown-grey
-  drawMountainLayer(3, 52, 18, '#4a3020');
-  // Foreground ridge — dark warm brown
-  drawMountainLayer(7, 32, 10, '#3a2010');
 }
 
 function drawRoad() {
@@ -620,21 +620,21 @@ function drawRoad() {
     const br = project(b.rx, 0, b.rz);
     if (!al || !ar || !bl || !br) continue;
 
-    // Packed-dirt surface — warm tan, subtle alternating tone for depth
+    // Asphalt surface — dark charcoal, slight alternation for depth
     ctx.beginPath();
     ctx.moveTo(al.sx, al.sy); ctx.lineTo(bl.sx, bl.sy);
     ctx.lineTo(br.sx, br.sy); ctx.lineTo(ar.sx, ar.sy);
     ctx.closePath();
-    ctx.fillStyle = i % 2 === 0 ? '#986030' : '#8a5828';
+    ctx.fillStyle = i % 2 === 0 ? '#282828' : '#232323';
     ctx.fill();
 
-    // Faint tyre-mark centre line for visual rhythm (no hard curb)
-    if (i % 6 < 3) {
-      ctx.strokeStyle = 'rgba(60,30,10,0.35)';
-      ctx.lineWidth = 1.5;
+    // Dashed white centre line (every 4 segs on, 2 off)
+    if (i % 6 < 4) {
       const ac = project(a.x, 0, a.z);
       const bc = project(b.x, 0, b.z);
       if (ac && bc) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = Math.max(1, ac.s * 3);
         ctx.beginPath(); ctx.moveTo(ac.sx, ac.sy); ctx.lineTo(bc.sx, bc.sy); ctx.stroke();
       }
     }
