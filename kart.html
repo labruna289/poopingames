@@ -77,7 +77,7 @@
     <p class="ov-sub">
       <strong>Arrows / WASD</strong> to drive &nbsp;·&nbsp; <strong>Shift</strong> to drift &nbsp;·&nbsp; <strong>Space / Z</strong> to jump<br>
       Hit a <strong>ramp</strong> to launch — hold <strong>X</strong> in the air to <strong>glide</strong>.<br>
-      Drift through corners and release for a <strong>boost</strong>. First to finish 3 laps wins.
+      Drift and release for a <strong>boost</strong>. First to cross the finish line wins.
     </p>
     <button class="btn" id="start-btn">Race!</button>
   </div>
@@ -112,40 +112,17 @@ const CAM_LERP   = 0.10;  // how quickly camera follows
 const N      = 72;     // number of segments
 const ROAD_W = 160;    // road half-width — wide dirt track, no hard walls
 
-// Stadium oval: two long straights (along Z) + semicircular ends
-// Player starts at seg 0 on the left straight facing +Z (into screen).
-const SL  = 18;   // segments per section (4 × 18 = 72)
-const SZ  = 480;  // half-length of each straight
-const TR  = 140;  // turn radius = X offset of each straight centreline
+// Straight drag-race track: segments march forward in +Z.
+const SEG_STEP = 68;   // world units between segments
 const track = [];
-// ① Left straight  — X=-TR, Z: -SZ → +SZ
-for (let i = 0; i < SL; i++)
-  track.push({ x: -TR, z: -SZ + (i / SL) * 2 * SZ });
-// ② Top right turn — centre (0, +SZ), angle π→0 (through z=SZ+TR)
-for (let i = 0; i < SL; i++) {
-  const a = Math.PI * (1 - i / SL);
-  track.push({ x: TR * Math.cos(a), z: SZ + TR * Math.sin(a) });
-}
-// ③ Right straight — X=+TR, Z: +SZ → -SZ
-for (let i = 0; i < SL; i++)
-  track.push({ x: TR, z: SZ - (i / SL) * 2 * SZ });
-// ④ Bottom right turn — centre (0, -SZ), angle 0→-π (through z=-SZ-TR)
-for (let i = 0; i < SL; i++) {
-  const a = -Math.PI * (i / SL);
-  track.push({ x: TR * Math.cos(a), z: -SZ + TR * Math.sin(a) });
-}
-// Compute tangent, left-normal, and road edge points
+for (let i = 0; i < N; i++)
+  track.push({ x: 0, z: i * SEG_STEP });
+// Straight track: tangent is always +Z, left-normal is -X
 for (let i = 0; i < N; i++) {
-  const p = track[(i - 1 + N) % N];
-  const n = track[(i + 1) % N];
-  let tx = n.x - p.x, tz = n.z - p.z;
-  const len = Math.hypot(tx, tz);
-  tx /= len; tz /= len;
-  const nx = -tz, nz = tx;   // left normal
   Object.assign(track[i], {
-    tx, tz, nx, nz,
-    lx: track[i].x + nx * ROAD_W, lz: track[i].z + nz * ROAD_W,
-    rx: track[i].x - nx * ROAD_W, rz: track[i].z - nz * ROAD_W,
+    tx: 0, tz: 1, nx: -1, nz: 0,
+    lx: -ROAD_W, lz: track[i].z,
+    rx:  ROAD_W, rz: track[i].z,
   });
 }
 
@@ -230,7 +207,7 @@ const RAMP_V         = JUMP_V * Math.SQRT2; // 2× jump height (height ∝ v²)
 const GRAVITY        = 0.18;    // downward pull per frame
 const GLIDE_GRAVITY  = GRAVITY / 20;        // 20× gravity reduction while gliding
 
-const TOTAL_LAPS = 3;
+// Drag race — first to reach the finish line wins (no laps)
 
 // ─── Camera state ────────────────────────────────────────────────────────────
 const cam = { x: 0, y: CAM_UP, z: 0, yaw: 0 };
@@ -388,18 +365,13 @@ class Kart {
     this.x += this.vx;
     this.z += this.vz;
 
-    // ── Lap counting ──
-    const ns = nearestSeg(this.x, this.z);
-    if (this.prevSeg > N * 0.85 && ns < N * 0.15) {
-      this.lap++;
-      if (this.lap >= TOTAL_LAPS) this.finished = true;
-    }
-    this.prevSeg = this.seg;
-    this.seg     = ns;
+    // ── Progress / finish ──
+    this.seg = nearestSeg(this.x, this.z);
+    if (this.seg >= N - 2) this.finished = true;
   }
 
   // Effective race progress (for position ranking)
-  progress() { return this.lap * N + this.seg; }
+  progress() { return this.seg; }
 }
 
 // ─── Track helpers ────────────────────────────────────────────────────────────
@@ -771,26 +743,29 @@ function drawRoad() {
     }
   }
 
-  // Start / finish line — checkered patches across the track width
-  const a0 = track[0], a1 = track[1];
-  const checks = 8;
-  for (let c = 0; c < checks; c++) {
-    const t0 = c / checks, t1 = (c + 1) / checks;
-    // interpolate edge points
-    const lx0 = a0.lx + (a0.rx - a0.lx) * t0, lz0 = a0.lz + (a0.rz - a0.lz) * t0;
-    const lx1 = a0.lx + (a0.rx - a0.lx) * t1, lz1 = a0.lz + (a0.rz - a0.lz) * t1;
-    const rx0 = a1.lx + (a1.rx - a1.lx) * t0, rz0 = a1.lz + (a1.rz - a1.lz) * t0;
-    const rx1 = a1.lx + (a1.rx - a1.lx) * t1, rz1 = a1.lz + (a1.rz - a1.lz) * t1;
-    const p0 = project(lx0, 0, lz0), p1 = project(lx1, 0, lz1);
-    const p2 = project(rx1, 0, rz1), p3 = project(rx0, 0, rz0);
-    if (!p0 || !p1 || !p2 || !p3) continue;
-    ctx.beginPath();
-    ctx.moveTo(p0.sx, p0.sy); ctx.lineTo(p1.sx, p1.sy);
-    ctx.lineTo(p2.sx, p2.sy); ctx.lineTo(p3.sx, p3.sy);
-    ctx.closePath();
-    ctx.fillStyle = (c % 2 === 0) ? 'rgba(255,255,255,0.82)' : 'rgba(30,20,10,0.82)';
-    ctx.fill();
+  // Helper: draw a checkered strip between two segment indices
+  function drawCheckers(si, sj) {
+    const a0 = track[si], a1 = track[sj];
+    const checks = 8;
+    for (let c = 0; c < checks; c++) {
+      const t0 = c / checks, t1 = (c + 1) / checks;
+      const lx0 = a0.lx + (a0.rx - a0.lx) * t0, lz0 = a0.lz;
+      const lx1 = a0.lx + (a0.rx - a0.lx) * t1, lz1 = a0.lz;
+      const rx0 = a1.lx + (a1.rx - a1.lx) * t0, rz0 = a1.lz;
+      const rx1 = a1.lx + (a1.rx - a1.lx) * t1, rz1 = a1.lz;
+      const p0 = project(lx0, 0, lz0), p1 = project(lx1, 0, lz1);
+      const p2 = project(rx1, 0, rz1), p3 = project(rx0, 0, rz0);
+      if (!p0 || !p1 || !p2 || !p3) continue;
+      ctx.beginPath();
+      ctx.moveTo(p0.sx, p0.sy); ctx.lineTo(p1.sx, p1.sy);
+      ctx.lineTo(p2.sx, p2.sy); ctx.lineTo(p3.sx, p3.sy);
+      ctx.closePath();
+      ctx.fillStyle = (c % 2 === 0) ? 'rgba(255,255,255,0.85)' : 'rgba(20,20,20,0.85)';
+      ctx.fill();
+    }
   }
+  drawCheckers(0, 1);           // start line
+  drawCheckers(N - 2, N - 1);  // finish line
 }
 
 // Draw kart as a 3-D box.
@@ -893,7 +868,9 @@ function drawHUD() {
   ctx.textBaseline = 'top';
   ctx.textAlign    = 'left';
   ctx.fillStyle    = '#fff';
-  ctx.fillText(`LAP  ${Math.min(player.lap + 1, TOTAL_LAPS)} / ${TOTAL_LAPS}`, 16, 14);
+  // Progress to finish
+  const prog = Math.min(player.seg / (N - 2), 1);
+  ctx.fillText(`${Math.round(prog * 100)}%  to finish`, 16, 14);
 
   // Timer
   ctx.textAlign = 'right';
