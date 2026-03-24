@@ -281,7 +281,7 @@ class Kart {
     this.pitch     = 0;     // nose-down angle (rad), animated
     this.prevRamp  = false;
 
-    // Per-kart dimensions (scale=1 → normal, scale=3 → big kart)
+    // Per-kart dimensions (scale=1 → normal, scale=2 → big kart)
     this.hw    = 20 * scale;
     this.hl    = 26 * scale;
     this.kh    = 17 * scale;
@@ -422,7 +422,7 @@ function startGame() {
   bots   = [
     new Kart(1, 0, '#ff006e'),
     new Kart(1, 0, '#ffe600'),
-    new Kart(1, 0, '#ff6600', 3),
+    new Kart(1, 0, '#ff6600', 2),
   ];
   bots[2].speedMul = 0.72;
 
