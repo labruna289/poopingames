@@ -210,9 +210,9 @@ const TURN_RATE      = 0.047;   // rad/frame
 const ALIGN_NORMAL   = 0.13;    // fast alignment = responsive
 const ALIGN_DRIFT    = 0.020;   // slow alignment = pronounced CTR-style slide
 const JUMP_V         = 3.5;     // initial vertical velocity on jump
-const RAMP_V         = 7.5;     // launch velocity from a ramp
+const RAMP_V         = JUMP_V * Math.SQRT2; // 2× jump height (height ∝ v²)
 const GRAVITY        = 0.18;    // downward pull per frame
-const GLIDE_GRAVITY  = 0.018;   // reduced gravity while planing
+const GLIDE_GRAVITY  = GRAVITY / 20;        // 20× gravity reduction while gliding
 
 const TOTAL_LAPS = 3;
 
