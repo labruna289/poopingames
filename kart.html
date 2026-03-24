@@ -76,8 +76,8 @@
     <h1 class="ov-title">Kart Race</h1>
     <p class="ov-sub">
       <strong>Arrows / WASD</strong> to drive &nbsp;·&nbsp; <strong>Shift</strong> to drift &nbsp;·&nbsp; <strong>Space / Z</strong> to jump<br>
-      Start a drift while turning, hold through the corner, release for a <strong>boost</strong>.<br>
-      First to finish 3 laps wins.
+      Hit a <strong>ramp</strong> to launch — hold <strong>X</strong> in the air to <strong>glide</strong>.<br>
+      Drift through corners and release for a <strong>boost</strong>. First to finish 3 laps wins.
     </p>
     <button class="btn" id="start-btn">Race!</button>
   </div>
@@ -133,6 +133,38 @@ for (let i = 0; i < N; i++) {
   });
 }
 
+// ─── Ramps ───────────────────────────────────────────────────────────────────
+// Each ramp sits on a track segment: kart driving over it gets launched upward.
+// Placed at quarter-points around the ellipse.
+const RAMP_SEGS = [9, 27, 45, 63];          // segment indices
+const RAMP_LEN  = 55;                        // depth along track direction (world units)
+const RAMP_PEAK = 28;                        // visual height at the top edge
+
+const ramps = RAMP_SEGS.map(si => {
+  const s = track[si % N];
+  return {
+    // Base edge (wide, on road surface)
+    bx: s.x - s.tx * RAMP_LEN * 0.5,
+    bz: s.z - s.tz * RAMP_LEN * 0.5,
+    // Top edge (narrow, raised)
+    tx2: s.x + s.tx * RAMP_LEN * 0.5,
+    tz2: s.z + s.tz * RAMP_LEN * 0.5,
+    nx: s.nx, nz: s.nz,  // lateral normal (for width)
+    tx: s.tx, tz: s.tz,  // forward tangent
+    cx: s.x,  cz: s.z,   // centre for collision check
+  };
+});
+
+function onRamp(kart) {
+  for (const r of ramps) {
+    const dx = kart.x - r.cx, dz = kart.z - r.cz;
+    const along  = dx * r.tx + dz * r.tz;   // projection along ramp direction
+    const across = dx * r.nx + dz * r.nz;   // projection across ramp width
+    if (Math.abs(along) < RAMP_LEN * 0.55 && Math.abs(across) < ROAD_W * 0.55) return true;
+  }
+  return false;
+}
+
 // ─── Mountain tile (baked once, blitted each frame) ──────────────────────────
 const MTN_TILE_W = 2200;   // > 2×W so two copies always span the screen
 const MTN_TILE_H = 140;
@@ -178,7 +210,9 @@ const TURN_RATE      = 0.047;   // rad/frame
 const ALIGN_NORMAL   = 0.13;    // fast alignment = responsive
 const ALIGN_DRIFT    = 0.020;   // slow alignment = pronounced CTR-style slide
 const JUMP_V         = 3.5;     // initial vertical velocity on jump
+const RAMP_V         = 7.5;     // launch velocity from a ramp
 const GRAVITY        = 0.18;    // downward pull per frame
+const GLIDE_GRAVITY  = 0.018;   // reduced gravity while planing
 
 const TOTAL_LAPS = 3;
 
@@ -245,10 +279,12 @@ class Kart {
     this.finished = false;
     this.rank     = 0;
 
-    // Jump state
-    this.y        = 0;    // height above ground
-    this.vy       = 0;    // vertical velocity
-    this.prevJump = false;
+    // Jump / glide state
+    this.y         = 0;     // height above ground
+    this.vy        = 0;     // vertical velocity
+    this.prevJump  = false;
+    this.gliding   = false; // plane mode active
+    this.prevRamp  = false; // for edge-triggered ramp launch
 
     // Difficulty knob — reduce for easier bots (1.0 = full speed)
     this.speedMul = 1.0;
@@ -256,7 +292,7 @@ class Kart {
     this.color = color;
   }
 
-  update(gas, brk, steerIn, driftBtn, jumpBtn) {
+  update(gas, brk, steerIn, driftBtn, jumpBtn, glideBtn) {
     if (this.finished) { this.speed *= 0.92; return; }
 
     // ── Speed ──
@@ -300,14 +336,26 @@ class Kart {
       this.angle += this.steer * tr * Math.sign(this.speed);
     }
 
+    // ── Ramp launch ──
+    const overRamp = onRamp(this);
+    if (overRamp && !this.prevRamp && this.y <= 0.1) {
+      this.vy = RAMP_V;
+    }
+    this.prevRamp = overRamp;
+
     // ── Jump ──
     if (jumpBtn && !this.prevJump && this.y <= 0.1) {
       this.vy = JUMP_V;
     }
     this.prevJump = jumpBtn;
-    this.vy -= GRAVITY;
+
+    // ── Glide (plane while airborne) ──
+    const inAir = this.y > 0.5;
+    this.gliding = inAir && glideBtn;
+    const grav = this.gliding ? GLIDE_GRAVITY : GRAVITY;
+    this.vy -= grav;
     this.y   = Math.max(0, this.y + this.vy);
-    if (this.y <= 0) this.vy = 0;
+    if (this.y <= 0) { this.vy = 0; this.gliding = false; }
 
     // ── Velocity lags heading — this creates the slide feel ──
     // In CTR, the kart "goes where you point it" in normal mode but slides in drift.
@@ -437,12 +485,13 @@ function update() {
   const right = keys['ArrowRight'] || keys['d'] || keys['D'];
   const drift = keys['Shift'];
   const jump  = keys[' '] || keys['z'] || keys['Z']; // 'z' avoids arrow-key ghosting
+  const glide = keys['x'] || keys['X'];
   const steer = (right ? 1 : 0) - (left ? 1 : 0);
 
-  player.update(gas, brk, steer, drift, jump);
+  player.update(gas, brk, steer, drift, jump, glide);
   bots.forEach(b => {
     const ai = aiInput(b);
-    b.update(ai.gas, ai.brk, ai.steer, ai.drift, false);
+    b.update(ai.gas, ai.brk, ai.steer, ai.drift, false, false);
   });
 
   resolveCollisions();
@@ -567,6 +616,7 @@ function draw() {
   ctx.clearRect(0, 0, W, H);
   drawSky();
   drawRoad();
+  drawRamps();
   // Draw karts back-to-front
   const allKarts = [player, ...bots];
   allKarts
@@ -575,6 +625,62 @@ function draw() {
     .forEach(({ k }) => drawKart(k));
   drawParticles();
   drawHUD();
+}
+
+function drawRamps() {
+  for (const r of ramps) {
+    const hw = ROAD_W * 0.42;   // ramp is narrower than the full road
+    // Four corners: base-left, base-right (y=0), top-left, top-right (y=RAMP_PEAK)
+    const bl = project(r.bx + r.nx * hw, 0,          r.bz + r.nz * hw);
+    const br = project(r.bx - r.nx * hw, 0,          r.bz - r.nz * hw);
+    const tl = project(r.tx2 + r.nx * hw * 0.5, RAMP_PEAK, r.tz2 + r.nz * hw * 0.5);
+    const tr = project(r.tx2 - r.nx * hw * 0.5, RAMP_PEAK, r.tz2 - r.nz * hw * 0.5);
+    if (!bl || !br || !tl || !tr) continue;
+
+    // Ramp surface (top face) — bright yellow-orange
+    ctx.beginPath();
+    ctx.moveTo(bl.sx, bl.sy); ctx.lineTo(tl.sx, tl.sy);
+    ctx.lineTo(tr.sx, tr.sy); ctx.lineTo(br.sx, br.sy);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(bl.sx, bl.sy, tl.sx, tl.sy);
+    grad.addColorStop(0, '#c06010');
+    grad.addColorStop(1, '#ffe040');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Front face (base edge — darker)
+    ctx.beginPath();
+    ctx.moveTo(bl.sx, bl.sy); ctx.lineTo(br.sx, br.sy);
+    ctx.lineTo(br.sx, br.sy + 6); ctx.lineTo(bl.sx, bl.sy + 6);
+    ctx.closePath();
+    ctx.fillStyle = '#7a3808';
+    ctx.fill();
+
+    // Outline for readability
+    ctx.strokeStyle = '#fff8';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(bl.sx, bl.sy); ctx.lineTo(tl.sx, tl.sy);
+    ctx.lineTo(tr.sx, tr.sy); ctx.lineTo(br.sx, br.sy);
+    ctx.stroke();
+
+    // Arrow on the ramp surface pointing uphill
+    const mx = (bl.sx + br.sx) * 0.5, my = (bl.sy + br.sy) * 0.5;
+    const ax = (tl.sx + tr.sx) * 0.5, ay = (tl.sy + tr.sy) * 0.5;
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(ax, ay); ctx.stroke();
+    // arrowhead
+    const adx = ax - mx, ady = ay - my, al = Math.hypot(adx, ady) || 1;
+    const ux = adx / al, uy = ady / al;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - ux * 8 - uy * 5, ay - uy * 8 + ux * 5);
+    ctx.lineTo(ax - ux * 8 + uy * 5, ay - uy * 8 - ux * 5);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fill();
+  }
 }
 
 function drawSky() {
@@ -711,6 +817,28 @@ function drawKart(kart) {
     ctx.stroke();
   });
 
+  // Glide wings — flat planes extending sideways when planing
+  if (kart.gliding) {
+    const wingSpan = 60;  // half-span in world units
+    const wingBack =  0;  // z offset from kart centre
+    for (const side of [-1, 1]) {
+      const inner = wp(side * hw,        h * 0.6, wingBack);
+      const outer = wp(side * wingSpan,  h * 0.3, wingBack);
+      const innB  = wp(side * hw,        h * 0.5, wingBack - 12);
+      const outB  = wp(side * wingSpan,  h * 0.2, wingBack - 12);
+      if (!inner || !outer || !innB || !outB) continue;
+      ctx.beginPath();
+      ctx.moveTo(inner.sx, inner.sy); ctx.lineTo(outer.sx, outer.sy);
+      ctx.lineTo(outB.sx,  outB.sy);  ctx.lineTo(innB.sx,  innB.sy);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0,200,255,0.72)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1;
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
   // Boost flash: cyan aura behind kart
   if (kart.boosting > 0) {
     const bt = kart.boosting / 50;
@@ -777,6 +905,18 @@ function drawHUD() {
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.fillText('BOOST CHARGE', W / 2, H - 14);
+  }
+
+  // Airborne / glide indicator
+  if (player.y > 0.5) {
+    ctx.font = '700 13px Arial';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = player.gliding ? '#00f5ff' : 'rgba(255,255,255,0.5)';
+    ctx.shadowColor = player.gliding ? '#00f5ff' : 'transparent';
+    ctx.shadowBlur  = player.gliding ? 10 : 0;
+    ctx.fillText(player.gliding ? '〜 GLIDING  [X]' : 'AIRBORNE — hold X to glide', W - 16, H - 8);
+    ctx.shadowBlur = 0;
   }
 
   // Boost screen flash
