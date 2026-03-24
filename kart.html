@@ -110,7 +110,7 @@ const CAM_LERP   = 0.10;  // how quickly camera follows
 
 // ─── Track ───────────────────────────────────────────────────────────────────
 const N      = 144;    // number of segments
-const ROAD_W = 480;    // road half-width (track is 960 units wide)
+const ROAD_W = 720;    // road half-width (track is 1440 units wide)
 
 // Straight drag-race track: segments march forward in +Z.
 const SEG_STEP = 68;   // world units between segments
@@ -430,11 +430,18 @@ function startGame() {
     new Kart(1, 0, '#ff006e'),
     new Kart(1, 0, '#ffe600'),
     new Kart(1, 0, '#ff6600', 2),
+    // Motorcycles — 50% narrower (scale 0.5), faster, 5 HP
+    new Kart(1, 0, '#00ff99', 0.5),
+    new Kart(1, 0, '#cc44ff', 0.5),
+    new Kart(1, 0, '#ff8800', 0.5),
   ];
   bots[2].speedMul = 0.72;
+  bots[3].speedMul = 1.35;  bots[3].hp = 5;
+  bots[4].speedMul = 1.35;  bots[4].hp = 5;
+  bots[5].speedMul = 1.35;  bots[5].hp = 5;
 
   // Side-by-side grid: gap between each pair = hw of each kart (half its full width)
-  const gridOrder = [bots[0], bots[1], player, bots[2]];
+  const gridOrder = [bots[0], bots[3], bots[1], player, bots[4], bots[2], bots[5]];
   const GAP = 20; // gap = normal kart hw
   const totalW = gridOrder.reduce((s, k) => s + k.hw * 2, 0) + GAP * (gridOrder.length - 1);
   let gx = -totalW / 2;
