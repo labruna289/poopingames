@@ -110,7 +110,7 @@ const CAM_LERP   = 0.10;  // how quickly camera follows
 
 // ─── Track ───────────────────────────────────────────────────────────────────
 const N      = 72;     // number of segments
-const ROAD_W = 160;    // road half-width — wide dirt track, no hard walls
+const ROAD_W = 300;    // road half-width (track is 600 units wide)
 
 // Straight drag-race track: segments march forward in +Z.
 const SEG_STEP = 68;   // world units between segments
@@ -407,13 +407,24 @@ startBtn.addEventListener('click', startGame);
 
 function startGame() {
   overlay.classList.add('hidden');
-  player = new Kart(2,  0, '#00f5ff');         // pole position
+  // All karts start at the same seg (aligned row), x set below
+  player = new Kart(1, 0, '#00f5ff');
   bots   = [
-    new Kart(1, -1, '#ff006e'),                // row 2 left
-    new Kart(1,  1, '#ffe600'),                // row 2 right
-    new Kart(0,  0, '#ff6600', 3),             // row 3 — big kart
+    new Kart(1, 0, '#ff006e'),
+    new Kart(1, 0, '#ffe600'),
+    new Kart(1, 0, '#ff6600', 3),
   ];
-  bots[2].speedMul = 0.72;                     // big kart is heavy — slower top speed
+  bots[2].speedMul = 0.72;
+
+  // Side-by-side grid: gap between each pair = hw of each kart (half its full width)
+  const gridOrder = [bots[0], bots[1], player, bots[2]];
+  const GAP = 20; // gap = normal kart hw
+  const totalW = gridOrder.reduce((s, k) => s + k.hw * 2, 0) + GAP * (gridOrder.length - 1);
+  let gx = -totalW / 2;
+  for (const k of gridOrder) {
+    k.x = gx + k.hw;   // centre of this kart
+    gx += k.hw * 2 + GAP;
+  }
   frame = 0;
   finishOrder = [];
   particles   = [];
