@@ -360,7 +360,7 @@ class Kart {
     const inAir  = this.y > 0.5;
     this.gliding = inAir && glideBtn;
     this.diving  = this.gliding && brk;          // X + S = hawk dive
-    const grav   = this.diving  ? GRAVITY * 7    // plummet like a hawk
+    const grav   = this.diving  ? GRAVITY * 7 / 1.5  // hawk dive (reduced)
                  : this.gliding ? GLIDE_GRAVITY   // float
                  :                GRAVITY;
     this.vy -= grav;
@@ -526,7 +526,30 @@ function update() {
   bots.forEach(b => {
     if (b.respawnTimer > 0) return;
     const ai = aiInput(b);
-    b.update(ai.gas, ai.brk, ai.steer, ai.drift, false, false);
+
+    // Bullet dodge: find the most threatening incoming bullet
+    let bestThreat = null, bestScore = 0;
+    for (const bl of bullets) {
+      if (bl.owner === b) continue;
+      const dx = b.x - bl.x, dz = b.z - bl.z;
+      const dist2 = dx*dx + dz*dz;
+      if (dist2 > 260*260) continue;
+      const closing = bl.vx * dx + bl.vz * dz;   // >0 = bullet heading toward b
+      if (closing <= 0) continue;
+      const score = closing / Math.sqrt(dist2);
+      if (score > bestScore) { bestScore = score; bestThreat = bl; }
+    }
+
+    let dodgeSteer = ai.steer;
+    if (bestThreat) {
+      // Lateral position of bullet relative to kart's right axis
+      const toBx = bestThreat.x - b.x, toBz = bestThreat.z - b.z;
+      const lateral = toBx * Math.cos(b.angle) - toBz * Math.sin(b.angle);
+      const dodge   = lateral > 0 ? -1 : 1;   // steer away from bullet side
+      dodgeSteer    = clamp(ai.steer * 0.25 + dodge * 0.75, -1, 1);
+    }
+
+    b.update(ai.gas, ai.brk, dodgeSteer, ai.drift, false, false);
     // Bot shooting: fire when a target is roughly ahead and within range
     const targets = [player, ...bots].filter(t => t !== b && t.respawnTimer <= 0);
     for (const t of targets) {
