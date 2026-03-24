@@ -533,7 +533,11 @@ function update() {
       const dx = t.x - b.x, dz = t.z - b.z;
       if (dx*dx + dz*dz > 700*700) continue;
       const ca = Math.cos(b.angle), sa = Math.sin(b.angle);
-      if (dx * sa + dz * ca > 0) { shoot(b); break; }
+      if (dx * sa + dz * ca > 0) {
+        const aimAt = Math.atan2(dx, dz) + (Math.random() - 0.5) * 0.25;
+        shoot(b, aimAt);
+        break;
+      }
     }
   });
 
@@ -621,10 +625,11 @@ function spawnDriftSparks(kart) {
 const BULLET_SPEED   = 24;
 const BULLET_LIFE    = 90;
 const SHOOT_COOLDOWN = 25;
+const AIM_SPREAD     = Math.PI / 4;   // max ±45° aim offset from steer
 
-function shoot(kart) {
+function shoot(kart, aimAngle = kart.angle + kart.steer * AIM_SPREAD) {
   if (kart.shootCooldown > 0 || kart.respawnTimer > 0) return;
-  const ca = Math.cos(kart.angle), sa = Math.sin(kart.angle);
+  const ca = Math.cos(aimAngle), sa = Math.sin(aimAngle);
   bullets.push({
     x: kart.x + sa * (kart.hl + 6),
     z: kart.z + ca * (kart.hl + 6),
@@ -758,6 +763,36 @@ function drawParticles() {
   });
 }
 
+// ─── Aim indicator ────────────────────────────────────────────────────────────
+function drawAimIndicator() {
+  if (!player || player.respawnTimer > 0) return;
+  const aimAngle = player.angle + player.steer * AIM_SPREAD;
+  const dist     = player.hl + 90;
+  const wx = player.x + Math.sin(aimAngle) * dist;
+  const wz = player.z + Math.cos(aimAngle) * dist;
+  const p  = project(wx, player.kh * 0.5, wz);
+  if (!p || p.depth <= 0) return;
+  const r     = clamp(7 / (p.depth * 0.0022), 2, 11);
+  const pulse = 0.55 + 0.45 * Math.sin(frame * 0.25);
+  ctx.save();
+  ctx.globalAlpha = pulse * (player.shootCooldown > 0 ? 0.35 : 0.85);
+  ctx.strokeStyle = player.color;
+  ctx.shadowColor = player.color;
+  ctx.shadowBlur  = 10;
+  ctx.lineWidth   = 1.8;
+  // Crosshair: circle + two short tick marks
+  ctx.beginPath();
+  ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(p.sx - r * 1.7, p.sy); ctx.lineTo(p.sx - r * 0.9, p.sy);
+  ctx.moveTo(p.sx + r * 0.9, p.sy); ctx.lineTo(p.sx + r * 1.7, p.sy);
+  ctx.moveTo(p.sx, p.sy - r * 1.7); ctx.lineTo(p.sx, p.sy - r * 0.9);
+  ctx.moveTo(p.sx, p.sy + r * 0.9); ctx.lineTo(p.sx, p.sy + r * 1.7);
+  ctx.stroke();
+  ctx.restore();
+}
+
 // ─── Draw ─────────────────────────────────────────────────────────────────────
 function draw() {
   ctx.clearRect(0, 0, W, H);
@@ -772,6 +807,7 @@ function draw() {
     .forEach(({ k }) => drawKart(k));
   drawParticles();
   drawBullets();
+  drawAimIndicator();
   drawHUD();
 }
 
