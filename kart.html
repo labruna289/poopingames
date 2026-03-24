@@ -112,11 +112,27 @@ const CAM_LERP   = 0.10;  // how quickly camera follows
 const N      = 72;     // number of segments
 const ROAD_W = 160;    // road half-width — wide dirt track, no hard walls
 
-// Build a slightly squished ellipse
+// Stadium oval: two long straights (along Z) + semicircular ends
+// Player starts at seg 0 on the left straight facing +Z (into screen).
+const SL  = 18;   // segments per section (4 × 18 = 72)
+const SZ  = 480;  // half-length of each straight
+const TR  = 140;  // turn radius = X offset of each straight centreline
 const track = [];
-for (let i = 0; i < N; i++) {
-  const t = (i / N) * Math.PI * 2;
-  track.push({ x: Math.cos(t) * 680, z: Math.sin(t) * 360 });
+// ① Left straight  — X=-TR, Z: -SZ → +SZ
+for (let i = 0; i < SL; i++)
+  track.push({ x: -TR, z: -SZ + (i / SL) * 2 * SZ });
+// ② Top right turn — centre (0, +SZ), angle π→0 (through z=SZ+TR)
+for (let i = 0; i < SL; i++) {
+  const a = Math.PI * (1 - i / SL);
+  track.push({ x: TR * Math.cos(a), z: SZ + TR * Math.sin(a) });
+}
+// ③ Right straight — X=+TR, Z: +SZ → -SZ
+for (let i = 0; i < SL; i++)
+  track.push({ x: TR, z: SZ - (i / SL) * 2 * SZ });
+// ④ Bottom right turn — centre (0, -SZ), angle 0→-π (through z=-SZ-TR)
+for (let i = 0; i < SL; i++) {
+  const a = -Math.PI * (i / SL);
+  track.push({ x: TR * Math.cos(a), z: -SZ + TR * Math.sin(a) });
 }
 // Compute tangent, left-normal, and road edge points
 for (let i = 0; i < N; i++) {
@@ -135,7 +151,7 @@ for (let i = 0; i < N; i++) {
 
 // ─── Ramps ───────────────────────────────────────────────────────────────────
 // Each ramp sits on a track segment: kart driving over it gets launched upward.
-// Placed at quarter-points around the ellipse.
+// Two on the straights (easy to hit), two at the turn apexes.
 const RAMP_SEGS = [9, 27, 45, 63];          // segment indices
 const RAMP_LEN  = 55;                        // depth along track direction (world units)
 const RAMP_PEAK = 28;                        // visual height at the top edge
@@ -256,7 +272,7 @@ function project(wx, wy, wz) {
 
 // ─── Kart class ───────────────────────────────────────────────────────────────
 class Kart {
-  constructor(segIdx, laneOffset, color) {
+  constructor(segIdx, laneOffset, color, scale = 1) {
     const seg = track[segIdx % N];
     this.x     = seg.x + seg.nx * laneOffset * 22;
     this.z     = seg.z + seg.nz * laneOffset * 22;
@@ -285,6 +301,12 @@ class Kart {
     this.prevJump  = false;
     this.gliding   = false; // plane mode active
     this.prevRamp  = false; // for edge-triggered ramp launch
+
+    // Per-kart dimensions (scale=1 → normal, scale=3 → big kart)
+    this.hw    = 20 * scale;
+    this.hl    = 26 * scale;
+    this.kh    = 17 * scale;
+    this.kartR = KART_R * scale;
 
     // Difficulty knob — reduce for easier bots (1.0 = full speed)
     this.speedMul = 1.0;
@@ -413,11 +435,13 @@ startBtn.addEventListener('click', startGame);
 
 function startGame() {
   overlay.classList.add('hidden');
-  player = new Kart(0,  0, '#00f5ff');
+  player = new Kart(2,  0, '#00f5ff');         // pole position
   bots   = [
-    new Kart(0, -1, '#ff006e'),
-    new Kart(0,  1, '#ffe600'),
+    new Kart(1, -1, '#ff006e'),                // row 2 left
+    new Kart(1,  1, '#ffe600'),                // row 2 right
+    new Kart(0,  0, '#ff6600', 3),             // row 3 — big kart
   ];
+  bots[2].speedMul = 0.72;                     // big kart is heavy — slower top speed
   frame = 0;
   finishOrder = [];
   particles   = [];
@@ -454,10 +478,10 @@ function resolveCollisions() {
       const a = all[i], b = all[j];
       const dx = b.x - a.x, dz = b.z - a.z;
       const dist = Math.hypot(dx, dz);
-      if (dist < KART_R * 2 && dist > 0.01) {
-        // Push the two karts apart so they don't overlap
+      const minDist = a.kartR + b.kartR;
+      if (dist < minDist && dist > 0.01) {
         const nx = dx / dist, nz = dz / dist;
-        const push = (KART_R * 2 - dist) * 0.5;
+        const push = (minDist - dist) * 0.5;
         a.x -= nx * push;  a.z -= nz * push;
         b.x += nx * push;  b.z += nz * push;
 
@@ -530,9 +554,10 @@ function spawnDust(kart) {
   if (frame % 2 !== 0) return;           // spawn every other frame — halves count
   const count = kart.drifting ? 2 : 1;
   const ca = Math.cos(kart.angle), sa = Math.sin(kart.angle);
+  const rearOff = kart.hl + 2;
   for (let i = 0; i < count; i++) {
-    const wx = kart.x - sa * 28 + (Math.random() - 0.5) * 16;
-    const wz = kart.z - ca * 28 + (Math.random() - 0.5) * 16;
+    const wx = kart.x - sa * rearOff + (Math.random() - 0.5) * kart.hw;
+    const wz = kart.z - ca * rearOff + (Math.random() - 0.5) * kart.hw;
     const p  = project(wx, kart.y + 1, wz);
     if (!p) continue;
     particles.push({
@@ -771,7 +796,7 @@ function drawRoad() {
 // Draw kart as a 3-D box.
 // Local axes: +Z = forward (kart nose), +X = right, +Y = up.
 function drawKart(kart) {
-  const hw = 20, hl = 26, h = 17; // half-width, half-length, height
+  const hw = kart.hw, hl = kart.hl, h = kart.kh;
   const ca = Math.cos(kart.angle), sa = Math.sin(kart.angle);
 
   // Optional lean while turning / drifting
