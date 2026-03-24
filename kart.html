@@ -109,7 +109,7 @@ const CAM_PITCH  = 0.20;  // tilt down (rad)
 const CAM_LERP   = 0.10;  // how quickly camera follows
 
 // ─── Track ───────────────────────────────────────────────────────────────────
-const N      = 72;     // number of segments
+const N      = 144;    // number of segments
 const ROAD_W = 480;    // road half-width (track is 960 units wide)
 
 // Straight drag-race track: segments march forward in +Z.
@@ -129,7 +129,7 @@ for (let i = 0; i < N; i++) {
 // ─── Ramps ───────────────────────────────────────────────────────────────────
 // Each ramp sits on a track segment: kart driving over it gets launched upward.
 // Two on the straights (easy to hit), two at the turn apexes.
-const RAMP_SEGS = [9, 27, 45, 63];          // segment indices
+const RAMP_SEGS = [9, 27, 45, 63, 81, 99, 117, 135];  // segment indices
 const RAMP_LEN  = 55;                        // depth along track direction (world units)
 const RAMP_PEAK = 28;                        // visual height at the top edge
 
