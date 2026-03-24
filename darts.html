@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DARTS — LAS VEGAS</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:#0a0010; min-height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Courier New',monospace; overflow:hidden;
+  }
+  body::before {
+    content:''; position:fixed; inset:0;
+    background:
+      radial-gradient(ellipse at 20% 50%,rgba(255,0,200,0.08) 0%,transparent 60%),
+      radial-gradient(ellipse at 80% 20%,rgba(0,200,255,0.08) 0%,transparent 60%),
+      radial-gradient(ellipse at 60% 80%,rgba(255,180,0,0.06) 0%,transparent 60%);
+    pointer-events:none; z-index:0;
+  }
+  body::after {
+    content:''; position:fixed; inset:0;
+    background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.12) 3px,rgba(0,0,0,0.12) 4px);
+    pointer-events:none; z-index:200;
+  }
+  #app { position:relative; z-index:10; display:flex; flex-direction:column; align-items:center; gap:12px; padding:20px; }
+
+  #title-wrap { display:flex; align-items:center; }
+  #title { font-family:'Arial Black',sans-serif; font-size:38px; font-weight:900; letter-spacing:5px; line-height:1; user-select:none; }
+  .t1{color:#ff00cc;text-shadow:0 0 10px #ff00cc,0 0 30px #ff00cc;}
+  .t2{color:#ffffff;text-shadow:0 0 10px #fff;animation:flicker1 4s infinite;}
+  .t3{color:#ffe600;text-shadow:0 0 10px #ffe600,0 0 30px #ffe600;}
+  .t4{color:#00ffe7;text-shadow:0 0 10px #00ffe7,0 0 30px #00ffe7;animation:flicker2 6s infinite;}
+  .t5{color:#ff4400;text-shadow:0 0 10px #ff4400,0 0 30px #ff4400;}
+  @keyframes flicker1{0%,96%,100%{opacity:1;}97%{opacity:0.2;}98%{opacity:1;}99%{opacity:0.4;}}
+  @keyframes flicker2{0%,88%,92%,100%{opacity:1;}89%{opacity:0.1;}90%{opacity:1;}91%{opacity:0.3;}}
+
+  .bulbs{display:flex;gap:6px;align-items:center;}
+  .bulb{width:7px;height:7px;border-radius:50%;animation:bulb-chase 1.2s linear infinite;}
+  .bulb:nth-child(1){background:#ff00cc;box-shadow:0 0 6px #ff00cc;animation-delay:0s;}
+  .bulb:nth-child(2){background:#ffe600;box-shadow:0 0 6px #ffe600;animation-delay:.15s;}
+  .bulb:nth-child(3){background:#00ffe7;box-shadow:0 0 6px #00ffe7;animation-delay:.3s;}
+  .bulb:nth-child(4){background:#ff4400;box-shadow:0 0 6px #ff4400;animation-delay:.45s;}
+  .bulb:nth-child(5){background:#ff00cc;box-shadow:0 0 6px #ff00cc;animation-delay:.6s;}
+  @keyframes bulb-chase{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.15;transform:scale(0.7);}}
+
+  #hud{display:flex;gap:20px;align-items:center;}
+  .hud-box{text-align:center;min-width:80px;padding:6px 12px;border:1px solid rgba(255,255,255,0.1);border-radius:4px;background:rgba(0,0,0,0.4);position:relative;}
+  .hud-box::before{content:'';position:absolute;inset:-1px;border-radius:4px;background:linear-gradient(135deg,rgba(255,0,204,0.3),rgba(0,255,231,0.3));z-index:-1;filter:blur(4px);}
+  .hud-label{font-size:9px;letter-spacing:4px;color:#556677;margin-bottom:2px;}
+  .hud-val{font-size:24px;font-weight:700;letter-spacing:2px;line-height:1.1;}
+  #remain-val{color:#00ffe7;text-shadow:0 0 12px #00ffe7;}
+  #round-val{color:#ffe600;text-shadow:0 0 12px #ffe600;}
+  #darts-val{color:#ff00cc;text-shadow:0 0 12px #ff00cc;}
+  #last-val{color:#ff4400;text-shadow:0 0 12px #ff4400;font-size:18px;}
+
+  #canvas-wrap{position:relative;display:inline-block;cursor:crosshair;}
+  #canvas-wrap::before{content:'';position:absolute;inset:-3px;border-radius:6px;background:linear-gradient(90deg,#ff00cc,#ffe600,#00ffe7,#ff4400,#ff00cc);background-size:300% 100%;animation:border-run 3s linear infinite;z-index:-1;filter:blur(2px);}
+  #canvas-wrap::after{content:'';position:absolute;inset:-6px;border-radius:8px;background:linear-gradient(90deg,#ff00cc,#ffe600,#00ffe7,#ff4400,#ff00cc);background-size:300% 100%;animation:border-run 3s linear infinite;z-index:-2;filter:blur(8px);opacity:0.5;}
+  @keyframes border-run{0%{background-position:0% 50%;}100%{background-position:300% 50%;}}
+  canvas{display:block;border-radius:3px;}
+
+  #overlay{position:absolute;inset:0;background:rgba(10,0,16,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border-radius:3px;backdrop-filter:blur(4px);cursor:pointer;}
+  #overlay.hidden{display:none;}
+  .ov-icon{font-size:50px;line-height:1;animation:pulse-icon 1.5s ease-in-out infinite;}
+  @keyframes pulse-icon{0%,100%{transform:scale(1);}50%{transform:scale(1.15);}}
+  .ov-title{font-family:'Arial Black',sans-serif;font-size:22px;letter-spacing:8px;}
+  .ov-hint{font-size:11px;letter-spacing:3px;color:#445566;margin-top:2px;}
+  #ov-sub{font-size:14px;letter-spacing:4px;color:#aabbcc;display:none;}
+  .ov-start .ov-icon{color:#00ffe7;text-shadow:0 0 20px #00ffe7;}
+  .ov-start .ov-title{color:#00ffe7;text-shadow:0 0 18px #00ffe7,0 0 40px #00ffe7;}
+  .ov-dead .ov-icon{color:#ff4400;text-shadow:0 0 20px #ff4400;animation:none;}
+  .ov-dead .ov-title{color:#ff4400;text-shadow:0 0 18px #ff4400,0 0 40px #ff4400;}
+  .ov-win .ov-icon{color:#ffe600;text-shadow:0 0 20px #ffe600;}
+  .ov-win .ov-title{color:#ffe600;text-shadow:0 0 18px #ffe600,0 0 40px #ffe600;}
+
+  /* ── SCOREBOARD ── */
+  #scoreboard{margin-top:8px;min-width:320px;}
+  #scoreboard h3{font-size:12px;letter-spacing:5px;color:#00ffe7;text-shadow:0 0 10px #00ffe7;text-align:center;margin-bottom:6px;}
+  #score-table{width:100%;border-collapse:collapse;font-size:12px;letter-spacing:2px;}
+  #score-table th{font-size:9px;letter-spacing:4px;color:#556677;padding:4px 8px;border-bottom:1px solid rgba(255,255,255,0.1);}
+  #score-table td{padding:4px 8px;text-align:center;color:#889;}
+  #score-table tr:nth-child(odd) td{background:rgba(255,255,255,0.02);}
+  .rank-1{color:#ffe600!important;text-shadow:0 0 8px #ffe600;font-weight:700;}
+  .rank-2{color:#c0c0c0!important;text-shadow:0 0 6px #c0c0c0;font-weight:700;}
+  .rank-3{color:#cd7f32!important;text-shadow:0 0 6px #cd7f32;font-weight:700;}
+  #empty-scores{text-align:center;font-size:11px;letter-spacing:3px;color:#334;padding:8px;}
+  @keyframes new-best-flash{0%,100%{color:#ffe600;text-shadow:0 0 10px #ffe600;}50%{color:#fff;text-shadow:0 0 20px #ffe600,0 0 40px #ff00cc;}}
+  .new-best{animation:new-best-flash 0.6s ease-in-out 4;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="title-wrap">
+    <div class="bulbs"><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div></div>
+    &nbsp;
+    <div id="title">
+      <span class="t1">D</span><span class="t2">A</span><span class="t3">R</span><span class="t4">T</span><span class="t5">S</span>
+    </div>
+    &nbsp;
+    <div class="bulbs"><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div><div class="bulb"></div></div>
+  </div>
+
+  <div id="hud">
+    <div class="hud-box"><div class="hud-label">REMAINING</div><div class="hud-val" id="remain-val">501</div></div>
+    <div class="hud-box"><div class="hud-label">ROUND</div><div class="hud-val" id="round-val">1/20</div></div>
+    <div class="hud-box"><div class="hud-label">DARTS</div><div class="hud-val" id="darts-val">3</div></div>
+    <div class="hud-box"><div class="hud-label">LAST</div><div class="hud-val" id="last-val">—</div></div>
+  </div>
+
+  <div id="canvas-wrap">
+    <canvas id="c"></canvas>
+    <div id="overlay" class="ov-start">
+      <div class="ov-icon">🎯</div>
+      <div class="ov-title">DARTS</div>
+      <div id="ov-sub"></div>
+      <div class="ov-hint">CLICK TO PLAY / TAP TO PLAY</div>
+    </div>
+  </div>
+
+  <div id="scoreboard">
+    <h3>BEST GAMES</h3>
+    <table id="score-table">
+      <thead><tr><th>RANK</th><th>ROUNDS</th><th>DATE</th></tr></thead>
+      <tbody id="score-body"></tbody>
+    </table>
+    <div id="empty-scores">NO WINS YET</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ── Constants ──────────────────────────────────────────────
+  const SIZE=450, CX=SIZE/2, CY=SIZE/2;
+  const R_BULL=8, R_OUTER_BULL=20, R_INNER_SINGLE=80, R_TRIPLE=95;
+  const R_OUTER_SINGLE=150, R_DOUBLE=165, R_BOARD=175;
+  const SEG_ORDER=[20,1,18,4,13,6,10,15,2,17,3,19,7,16,8,11,14,9,12,5];
+  const SEG_ANG=Math.PI*2/20;
+  const COL_A='#ff00cc', COL_B='#00ffe7';
+  const COL_A_DIM='#660044', COL_B_DIM='#004444';
+  const WOBBLE_AMP=12, WOBBLE_FREQ_X=2.3, WOBBLE_FREQ_Y=3.1;
+
+  // ── DOM ────────────────────────────────────────────────────
+  const canvas=document.getElementById('c');
+  const ctx=canvas.getContext('2d');
+  canvas.width=SIZE; canvas.height=SIZE;
+  const remainEl=document.getElementById('remain-val');
+  const roundEl=document.getElementById('round-val');
+  const dartsEl=document.getElementById('darts-val');
+  const lastEl=document.getElementById('last-val');
+  const overlay=document.getElementById('overlay');
+  const ovIcon=overlay.querySelector('.ov-icon');
+  const ovTitle=overlay.querySelector('.ov-title');
+  const ovSub=document.getElementById('ov-sub');
+  const ovHint=overlay.querySelector('.ov-hint');
+  const scoreBody=document.getElementById('score-body');
+  const emptyScores=document.getElementById('empty-scores');
+
+  // ── State ──────────────────────────────────────────────────
+  let score,round,dartsLeft,roundStartScore,thrownDarts,wobbleTime;
+  let animating,running,loopId;
+  let mouseX=CX,mouseY=CY;
+  let particles=[];
+  let bestScores=[];
+
+  // ── Scoreboard (localStorage) ──────────────────────────────
+  function loadScores(){
+    try{ bestScores=JSON.parse(localStorage.getItem('darts-scores'))||[]; }
+    catch(e){ bestScores=[]; }
+  }
+  function saveScore(rounds){
+    var d=new Date();
+    var dateStr=(d.getMonth()+1)+'/'+d.getDate()+'/'+d.getFullYear();
+    bestScores.push({rounds:rounds,date:dateStr});
+    bestScores.sort(function(a,b){ return a.rounds-b.rounds; });
+    bestScores=bestScores.slice(0,5);
+    localStorage.setItem('darts-scores',JSON.stringify(bestScores));
+  }
+  function renderScoreboard(){
+    scoreBody.innerHTML='';
+    if(bestScores.length===0){ emptyScores.style.display=''; return; }
+    emptyScores.style.display='none';
+    for(var i=0;i<bestScores.length;i++){
+      var tr=document.createElement('tr');
+      var rankCls=i<3?'rank-'+(i+1):'';
+      tr.innerHTML='<td class="'+rankCls+'">#'+(i+1)+'</td><td>'+bestScores[i].rounds+'</td><td>'+bestScores[i].date+'</td>';
+      scoreBody.appendChild(tr);
+    }
+  }
+  function isNewBest(rounds){
+    return bestScores.length===0||rounds<=bestScores[0].rounds;
+  }
+
+  // ── Dartboard Drawing ──────────────────────────────────────
+  function drawBoard(){
+    ctx.fillStyle='#0a0010';
+    ctx.fillRect(0,0,SIZE,SIZE);
+
+    // Board background circle
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(CX,CY,R_BOARD,0,Math.PI*2);
+    ctx.fillStyle='#111';
+    ctx.fill();
+    ctx.restore();
+
+    // Segments
+    for(var i=0;i<20;i++){
+      var ang=-Math.PI/2-SEG_ANG/2+i*SEG_ANG;
+      var colOuter=i%2===0?COL_A_DIM:COL_B_DIM;
+      var colInner=i%2===0?COL_B_DIM:COL_A_DIM;
+      var colTriple=i%2===0?COL_A:COL_B;
+      var colDouble=i%2===0?COL_A:COL_B;
+
+      // Double ring
+      drawArc(ang,SEG_ANG,R_OUTER_SINGLE,R_DOUBLE,colDouble,0.3);
+      // Outer single
+      drawArc(ang,SEG_ANG,R_TRIPLE,R_OUTER_SINGLE,colOuter,0);
+      // Triple ring
+      drawArc(ang,SEG_ANG,R_INNER_SINGLE,R_TRIPLE,colTriple,0.3);
+      // Inner single
+      drawArc(ang,SEG_ANG,R_OUTER_BULL,R_INNER_SINGLE,colInner,0);
+    }
+
+    // Bull rings
+    ctx.beginPath();
+    ctx.arc(CX,CY,R_OUTER_BULL,0,Math.PI*2);
+    ctx.fillStyle='#004444';
+    ctx.fill();
+    // Pulsing bullseye
+    var pulse=0.8+0.2*Math.sin(wobbleTime*3);
+    ctx.beginPath();
+    ctx.arc(CX,CY,R_BULL,0,Math.PI*2);
+    ctx.fillStyle=COL_A;
+    ctx.shadowColor=COL_A;
+    ctx.shadowBlur=15*pulse;
+    ctx.fill();
+    ctx.shadowBlur=0;
+
+    // Wire lines
+    ctx.strokeStyle='rgba(255,255,255,0.15)';
+    ctx.lineWidth=0.5;
+    for(var i=0;i<20;i++){
+      var ang=-Math.PI/2-SEG_ANG/2+i*SEG_ANG;
+      ctx.beginPath();
+      ctx.moveTo(CX+Math.cos(ang)*R_OUTER_BULL,CY+Math.sin(ang)*R_OUTER_BULL);
+      ctx.lineTo(CX+Math.cos(ang)*R_DOUBLE,CY+Math.sin(ang)*R_DOUBLE);
+      ctx.stroke();
+    }
+    // Ring wires
+    var rings=[R_OUTER_BULL,R_INNER_SINGLE,R_TRIPLE,R_OUTER_SINGLE,R_DOUBLE];
+    for(var r=0;r<rings.length;r++){
+      ctx.beginPath();
+      ctx.arc(CX,CY,rings[r],0,Math.PI*2);
+      ctx.stroke();
+    }
+
+    // Numbers
+    ctx.font='bold 13px Arial Black, sans-serif';
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    ctx.fillStyle='#ddd';
+    for(var i=0;i<20;i++){
+      var ang=-Math.PI/2+i*SEG_ANG;
+      var nr=R_BOARD+14;
+      ctx.fillText(SEG_ORDER[i],CX+Math.cos(ang)*nr,CY+Math.sin(ang)*nr);
+    }
+  }
+
+  function drawArc(startAng,sweep,rInner,rOuter,color,glow){
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(CX,CY,rOuter,startAng,startAng+sweep);
+    ctx.arc(CX,CY,rInner,startAng+sweep,startAng,true);
+    ctx.closePath();
+    ctx.fillStyle=color;
+    if(glow>0){
+      ctx.shadowColor=color;
+      ctx.shadowBlur=10*glow;
+    }
+    ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.restore();
+  }
+
+  // ── Hit Detection ──────────────────────────────────────────
+  function getHitZone(x,y){
+    var dx=x-CX, dy=y-CY;
+    var dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist>R_DOUBLE) return {multiplier:0,baseValue:0,label:'MISS',isDouble:false};
+    if(dist<R_BULL) return {multiplier:2,baseValue:25,label:'BULL',isDouble:true};
+    if(dist<R_OUTER_BULL) return {multiplier:1,baseValue:25,label:'25',isDouble:false};
+
+    // Determine segment
+    var ang=Math.atan2(dy,dx);
+    // Rotate so segment 0 (20) is at top
+    ang+=Math.PI/2+SEG_ANG/2;
+    if(ang<0) ang+=Math.PI*2;
+    var idx=Math.floor(ang/SEG_ANG)%20;
+    var base=SEG_ORDER[idx];
+
+    if(dist<R_INNER_SINGLE) return {multiplier:1,baseValue:base,label:''+base,isDouble:false};
+    if(dist<R_TRIPLE) return {multiplier:3,baseValue:base,label:'T'+base,isDouble:false};
+    if(dist<R_OUTER_SINGLE) return {multiplier:1,baseValue:base,label:''+base,isDouble:false};
+    return {multiplier:2,baseValue:base,label:'D'+base,isDouble:true};
+  }
+
+  // ── Wobble System ──────────────────────────────────────────
+  function getWobbleOffset(){
+    return {
+      x:WOBBLE_AMP*Math.sin(wobbleTime*WOBBLE_FREQ_X),
+      y:WOBBLE_AMP*Math.sin(wobbleTime*WOBBLE_FREQ_Y+1.7)
+    };
+  }
+
+  // ── Crosshair Drawing ─────────────────────────────────────
+  function drawCrosshair(){
+    if(!running||animating) return;
+    var w=getWobbleOffset();
+    var cx=mouseX+w.x*0.3, cy=mouseY+w.y*0.3;
+    ctx.save();
+    ctx.strokeStyle='rgba(255,255,255,0.7)';
+    ctx.lineWidth=1;
+    ctx.shadowColor='#fff';
+    ctx.shadowBlur=4;
+    // Horizontal
+    ctx.beginPath();
+    ctx.moveTo(cx-12,cy); ctx.lineTo(cx+12,cy);
+    ctx.stroke();
+    // Vertical
+    ctx.beginPath();
+    ctx.moveTo(cx,cy-12); ctx.lineTo(cx,cy+12);
+    ctx.stroke();
+    // Circle
+    ctx.beginPath();
+    ctx.arc(cx,cy,6,0,Math.PI*2);
+    ctx.stroke();
+    ctx.shadowBlur=0;
+    ctx.restore();
+  }
+
+  // ── Dart Rendering ─────────────────────────────────────────
+  function drawDarts(){
+    for(var i=0;i<thrownDarts.length;i++){
+      var d=thrownDarts[i];
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(d.x,d.y,3,0,Math.PI*2);
+      ctx.fillStyle='#ffe600';
+      ctx.shadowColor='#ffe600';
+      ctx.shadowBlur=6;
+      ctx.fill();
+      // Tail line
+      ctx.strokeStyle='#ffe600';
+      ctx.lineWidth=1.5;
+      ctx.beginPath();
+      ctx.moveTo(d.x,d.y);
+      ctx.lineTo(d.x,d.y+10);
+      ctx.stroke();
+      ctx.shadowBlur=0;
+      ctx.restore();
+    }
+  }
+
+  // ── Particle System ────────────────────────────────────────
+  function spawnParticles(x,y,color){
+    for(var i=0;i<20;i++){
+      var ang=Math.random()*Math.PI*2;
+      var spd=1+Math.random()*3;
+      particles.push({x:x,y:y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,life:1,color:color});
+    }
+  }
+  function updateParticles(dt){
+    for(var i=particles.length-1;i>=0;i--){
+      var p=particles[i];
+      p.x+=p.vx; p.y+=p.vy;
+      p.life-=dt*2;
+      if(p.life<=0) particles.splice(i,1);
+    }
+  }
+  function drawParticles(){
+    for(var i=0;i<particles.length;i++){
+      var p=particles[i];
+      ctx.save();
+      ctx.globalAlpha=p.life;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,2*p.life,0,Math.PI*2);
+      ctx.fillStyle=p.color;
+      ctx.shadowColor=p.color;
+      ctx.shadowBlur=6;
+      ctx.fill();
+      ctx.shadowBlur=0;
+      ctx.restore();
+    }
+  }
+
+  // ── Throw Animation ────────────────────────────────────────
+  var throwAnim=null;
+  function animateThrow(tx,ty,cb){
+    animating=true;
+    throwAnim={sx:CX,sy:SIZE+20,tx:tx,ty:ty,t:0,dur:0.3,cb:cb};
+  }
+  function updateThrowAnim(dt){
+    if(!throwAnim) return;
+    throwAnim.t+=dt;
+    var p=Math.min(throwAnim.t/throwAnim.dur,1);
+    // Ease out
+    var ep=1-Math.pow(1-p,3);
+    var cx=throwAnim.sx+(throwAnim.tx-throwAnim.sx)*ep;
+    var cy=throwAnim.sy+(throwAnim.ty-throwAnim.sy)*ep;
+    // Draw flying dart
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx,cy,4,0,Math.PI*2);
+    ctx.fillStyle='#ffe600';
+    ctx.shadowColor='#ffe600';
+    ctx.shadowBlur=10;
+    ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.restore();
+    if(p>=1){
+      var cb=throwAnim.cb;
+      throwAnim=null;
+      animating=false;
+      cb();
+    }
+  }
+
+  // ── Scoring Logic ──────────────────────────────────────────
+  function processThrow(){
+    var w=getWobbleOffset();
+    var hitX=mouseX+w.x;
+    var hitY=mouseY+w.y;
+    // Clamp to canvas
+    hitX=Math.max(0,Math.min(SIZE,hitX));
+    hitY=Math.max(0,Math.min(SIZE,hitY));
+
+    animateThrow(hitX,hitY,function(){
+      var zone=getHitZone(hitX,hitY);
+      var pts=zone.multiplier*zone.baseValue;
+      lastEl.textContent=zone.label;
+
+      // Spawn particles
+      var pcol=pts===0?'#ff4400':zone.isDouble?'#ffe600':'#00ffe7';
+      spawnParticles(hitX,hitY,pcol);
+
+      // Add dart to board
+      if(pts>0) thrownDarts.push({x:hitX,y:hitY});
+
+      var newScore=score-pts;
+
+      // Bust check
+      if(newScore<0||newScore===1||(newScore===0&&!zone.isDouble)){
+        // Bust! Revert round
+        score=roundStartScore;
+        lastEl.textContent='BUST';
+        spawnParticles(CX,CY,'#ff4400');
+        dartsLeft=0; // skip remaining
+      } else {
+        score=newScore;
+      }
+
+      remainEl.textContent=score;
+
+      // Win check
+      if(score===0){
+        gameWin();
+        return;
+      }
+
+      dartsLeft--;
+      dartsEl.textContent=dartsLeft;
+
+      if(dartsLeft===0){
+        nextRound();
+      }
+    });
+  }
+
+  // ── Game Flow ──────────────────────────────────────────────
+  function startGame(){
+    score=501; round=1; dartsLeft=3; roundStartScore=501;
+    thrownDarts=[]; particles=[]; wobbleTime=0;
+    animating=false; running=true;
+    updateHUD();
+    lastEl.textContent='—';
+    overlay.classList.add('hidden');
+    if(loopId) cancelAnimationFrame(loopId);
+    lastTime=performance.now();
+    loopId=requestAnimationFrame(gameLoop);
+  }
+
+  function nextRound(){
+    round++;
+    if(round>20){ gameOver(); return; }
+    dartsLeft=3;
+    roundStartScore=score;
+    thrownDarts=[];
+    updateHUD();
+  }
+
+  function updateHUD(){
+    remainEl.textContent=score;
+    roundEl.textContent=round+'/20';
+    dartsEl.textContent=dartsLeft;
+  }
+
+  function gameOver(){
+    running=false;
+    overlay.className='ov-dead';
+    ovIcon.textContent='💀';
+    ovTitle.textContent='GAME OVER';
+    ovSub.textContent='RAN OUT OF ROUNDS';
+    ovSub.style.display='block';
+    ovHint.textContent='CLICK TO RETRY';
+    overlay.classList.remove('hidden');
+  }
+
+  function gameWin(){
+    running=false;
+    var nb=isNewBest(round);
+    saveScore(round);
+    renderScoreboard();
+    overlay.className='ov-win';
+    ovIcon.textContent='🏆';
+    ovTitle.textContent='YOU WIN!';
+    ovSub.textContent='FINISHED IN '+round+' ROUND'+(round>1?'S':'');
+    ovSub.style.display='block';
+    if(nb){
+      ovHint.textContent='NEW BEST!';
+      ovHint.classList.add('new-best');
+    } else {
+      ovHint.textContent='CLICK TO PLAY AGAIN';
+      ovHint.classList.remove('new-best');
+    }
+    overlay.classList.remove('hidden');
+  }
+
+  // ── Game Loop ──────────────────────────────────────────────
+  var lastTime=0;
+  function gameLoop(ts){
+    var dt=Math.min((ts-lastTime)/1000,0.05);
+    lastTime=ts;
+    wobbleTime+=dt;
+    drawBoard();
+    drawDarts();
+    updateParticles(dt);
+    drawParticles();
+    updateThrowAnim(dt);
+    drawCrosshair();
+    loopId=requestAnimationFrame(gameLoop);
+  }
+
+  // ── Input ──────────────────────────────────────────────────
+  function getCanvasPos(e){
+    var rect=canvas.getBoundingClientRect();
+    var scaleX=SIZE/rect.width, scaleY=SIZE/rect.height;
+    if(e.touches){
+      return {x:(e.touches[0].clientX-rect.left)*scaleX,y:(e.touches[0].clientY-rect.top)*scaleY};
+    }
+    return {x:(e.clientX-rect.left)*scaleX,y:(e.clientY-rect.top)*scaleY};
+  }
+
+  canvas.addEventListener('mousemove',function(e){
+    var p=getCanvasPos(e);
+    mouseX=p.x; mouseY=p.y;
+  });
+  canvas.addEventListener('touchmove',function(e){
+    e.preventDefault();
+    var p=getCanvasPos(e);
+    mouseX=p.x; mouseY=p.y;
+  },{passive:false});
+
+  function handleThrow(e){
+    if(!running||animating) return;
+    if(e.type==='touchstart'){
+      e.preventDefault();
+      var p=getCanvasPos(e);
+      mouseX=p.x; mouseY=p.y;
+    }
+    processThrow();
+  }
+
+  canvas.addEventListener('click',handleThrow);
+  canvas.addEventListener('touchstart',handleThrow,{passive:false});
+
+  overlay.addEventListener('click',function(){
+    ovHint.classList.remove('new-best');
+    startGame();
+  });
+  overlay.addEventListener('touchstart',function(e){
+    e.preventDefault();
+    ovHint.classList.remove('new-best');
+    startGame();
+  },{passive:false});
+
+  // ── Init ───────────────────────────────────────────────────
+  loadScores();
+  renderScoreboard();
+  // Draw initial board
+  wobbleTime=0;
+  drawBoard();
+})();
+</script>
+</body>
+</html>
